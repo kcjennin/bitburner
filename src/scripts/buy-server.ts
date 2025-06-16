@@ -1,3 +1,5 @@
+import { NS } from '@ns';
+
 const FILES = [
   '/scripts/weak.js',
   '/scripts/grow.js',
@@ -12,23 +14,23 @@ const FILES = [
 ];
 
 /** @param {NS} ns */
-export async function main(ns) {
+export async function main(ns: NS): Promise<void> {
   if (ns.args.length != 1) {
     ns.tprint('usage: buy-server.js <RAM>');
   }
   // How much RAM each purchased server will have. In this case, it'll
   // be 8GB.
-  const ram = ns.args[0];
+  const ram = parseInt(String(ns.args[0]));
 
   const servers = ns.getPurchasedServers();
   // Continuously try to purchase servers until we've reached the maximum
   // amount of servers
   let i = 0;
   while (i < ns.getPurchasedServerLimit() - 1) {
-    let hostname = 'pserv-' + i.toString();
+    const hostname = `pserv=${i}`;
 
     // Skip if it exists already
-    if (servers.find((srv) => srv.name == hostname) != null) {
+    if (servers.includes(hostname)) {
       ++i;
       continue;
     }

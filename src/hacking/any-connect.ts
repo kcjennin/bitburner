@@ -1,20 +1,12 @@
-const DISABLED_LOGS = [
-  "scan",
-  "run",
-  "getServerRequiredHackingLevel",
-  "getHackingLevel",
-  "getServerNumPortsRequired",
-  "fileExists",
-  "hasRootAccess"
-]
+import { AutocompleteData, NS } from '@ns';
 
 function buildServerGraph(ns: NS, start: string): Record<string, string[]> {
-  let graph: Record<string, string[]> = {};
-  let servers: string[] = [start];
-  let idx: number = 0;
+  const graph: Record<string, string[]> = {};
+  const servers: string[] = [start];
+  let idx = 0;
 
   while (idx < servers.length) {
-    graph[servers[idx]] = ns.scan(servers[idx])
+    graph[servers[idx]] = ns.scan(servers[idx]);
     for (const newServer of graph[servers[idx]]) {
       if (!servers.includes(newServer)) {
         servers.push(newServer);
@@ -25,17 +17,16 @@ function buildServerGraph(ns: NS, start: string): Record<string, string[]> {
   return graph;
 }
 
-function bfsPath(
-  graph: Record<string, string[]>,
-  start: string,
-  goal: string
-): string[] | null {
+function bfsPath(graph: Record<string, string[]>, start: string, goal: string): string[] | null {
   const queue: string[] = [start];
   const visited = new Set<string>([start]);
-  const parent: Record<string, string | null> = { [start]: null};
+  const parent: Record<string, string | null> = { [start]: null };
 
   while (queue.length > 0) {
-    const node = queue.shift()!;
+    const node = queue.shift();
+    if (node === undefined) {
+      continue; // Skip if node is undefined
+    }
     if (node === goal) {
       const path: string[] = [];
       let current: string | null = goal;
@@ -59,7 +50,7 @@ function bfsPath(
 }
 
 function pathToCommands(path: string[]): string {
-  return path.map((p) => `connect ${p}`).join(" ; ")
+  return path.map((p) => `connect ${p}`).join(' ; ');
 }
 
 export function autocomplete(data: AutocompleteData) {
@@ -70,12 +61,12 @@ export async function main(ns: NS) {
   if (ns.args.length != 1) ns.exit();
 
   const start = ns.getServer().hostname;
-  const graph = buildServerGraph(ns, start)
-  const path = bfsPath(graph, start, ns.args[0].toString())
+  const graph = buildServerGraph(ns, start);
+  const path = bfsPath(graph, start, String(ns.args[0]));
   if (path !== null) {
-    navigator.clipboard.writeText(pathToCommands(path))
-    ns.tprint("Copied!")
+    await navigator.clipboard.writeText(pathToCommands(path));
+    ns.tprint('Copied!');
   } else {
-    ns.tprint(`Failed to find a path from ${start} to ${ns.args[0]}`)
+    ns.tprint(`Failed to find a path from ${start} to ${ns.args[0]}`);
   }
 }
