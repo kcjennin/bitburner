@@ -2,8 +2,8 @@ import { AutocompleteData, NS } from '@ns';
 import { getAllServers } from '@/lib/server-utils.js';
 
 function getServerData(ns: NS, server: string) {
-  const money = ns.getServerMoneyAvailable(server);
   const moneyMax = ns.getServerMaxMoney(server);
+  const moneyPct = ns.getServerMoneyAvailable(server) / moneyMax;
   const securityLvl = ns.getServerSecurityLevel(server);
   const securityMin = ns.getServerMinSecurityLevel(server);
   const ram = ns.getServerMaxRam(server);
@@ -11,7 +11,7 @@ function getServerData(ns: NS, server: string) {
 
   return (
     `\n${server}:\n` +
-    `  money: ${Math.round(money)} / ${moneyMax}\n` +
+    `  money: ${ns.formatPercent(moneyPct, 0)} of ${ns.formatNumber(moneyMax, 0, 1000, true)}\n` +
     `  security: ${ns.formatNumber(securityLvl, 2)} (${securityMin})\n` +
     `  RAM: ${ram}\n` +
     `  growth: ${growthRate}`
