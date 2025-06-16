@@ -1,11 +1,11 @@
 import { NS } from '@ns';
 
 const FILES = [
-  '/scripts/weak.js',
-  '/scripts/grow.js',
-  '/scripts/hack.js',
+  '/hacking/primitives/weak.js',
+  '/hacking/primitives/grow.js',
+  '/hacking/primitives/hack.js',
   '/scripts/prep.js',
-  '/scripts/share.js',
+  '/scripts/primitives/share.js',
   '/scripts/share-all.js',
   '/hacking/hwgw.js',
   '/hacking/hwgw-analyze.js',

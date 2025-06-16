@@ -50,7 +50,7 @@ export async function main(ns: NS): Promise<void> {
   // Weaken server to minimum security
   while (ns.getServerSecurityLevel(target) > ns.getServerMinSecurityLevel(target)) {
     ns.print('Weakening');
-    ns.run('/scripts/weak.js', totalThreads, target);
+    ns.run('/hacking/primitives/weak.js', totalThreads, target);
     await ns.sleep(ns.getWeakenTime(target) + 200);
   }
 
@@ -67,8 +67,8 @@ export async function main(ns: NS): Promise<void> {
       ns.exit();
     }
 
-    ns.run('/scripts/grow.js', g, target, JSON.stringify({ additionalMsec: wTime - gTime - 100 }));
-    ns.run('/scripts/weak.js', w, target);
+    ns.run('/hacking/primitives/grow.js', g, target, JSON.stringify({ additionalMsec: wTime - gTime - 100 }));
+    ns.run('/hacking/primitives/weak.js', w, target);
     await ns.sleep(wTime + 1000);
   }
 }

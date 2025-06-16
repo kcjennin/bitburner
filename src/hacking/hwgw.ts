@@ -77,7 +77,7 @@ export async function main(ns: NS): Promise<void> {
 
     while (securityNotOK(ns, target)) {
       ns.print('Weakening');
-      ns.run('/scripts/weak.js', totalThreads, target);
+      ns.run('/hacking/primitives/weak.js', totalThreads, target);
       await ns.sleep(Math.max(ns.getWeakenTime(target) + 200, 20));
     }
 
@@ -93,8 +93,8 @@ export async function main(ns: NS): Promise<void> {
         ns.exit();
       }
 
-      ns.run('/scripts/grow.js', g, target, JSON.stringify({ additionalMsec: wTime - gTime - 100 }));
-      ns.run('/scripts/weak.js', w, target);
+      ns.run('/hacking/primitives/grow.js', g, target, JSON.stringify({ additionalMsec: wTime - gTime - 100 }));
+      ns.run('/hacking/primitives/weak.js', w, target);
       await ns.sleep(Math.max(wTime + 1000, 20));
     }
 
@@ -116,10 +116,10 @@ export async function main(ns: NS): Promise<void> {
 
       const hwgw = h + w1 + g + w2;
       while (batchThreads - hwgw > 0) {
-        ns.run('/scripts/hack.js', h, target, JSON.stringify({ additionalMsec: wTime - hTime - 200 }));
-        ns.run('/scripts/weak.js', w1, target, JSON.stringify({ additionalMsec: 0 }));
-        ns.run('/scripts/grow.js', g, target, JSON.stringify({ additionalMsec: wTime - gTime - 200 + 1000 }));
-        ns.run('/scripts/weak.js', w2, target, JSON.stringify({ additionalMsec: 1000 }));
+        ns.run('/hacking/primitives/hack.js', h, target, JSON.stringify({ additionalMsec: wTime - hTime - 200 }));
+        ns.run('/hacking/primitives/weak.js', w1, target, JSON.stringify({ additionalMsec: 0 }));
+        ns.run('/hacking/primitives/grow.js', g, target, JSON.stringify({ additionalMsec: wTime - gTime - 200 + 1000 }));
+        ns.run('/hacking/primitives/weak.js', w2, target, JSON.stringify({ additionalMsec: 1000 }));
 
         batchThreads -= hwgw;
         await ns.sleep(100);
