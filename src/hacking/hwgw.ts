@@ -1,19 +1,5 @@
 import { AutocompleteData, NS } from '@ns';
 
-const DISABLED_LOGS = [
-  'clearPort',
-  // "exec",
-  'readPort',
-  'sleep',
-  'read',
-  'getServerSecurityLevel',
-  'getServerMinSecurityLevel',
-  'getWeakenTime',
-  'getServerMoneyAvailable',
-  'getServerMaxMoney',
-  'getGrowTime',
-];
-
 const SCRIPT_RAM = 1.75;
 const PORT = 1;
 
@@ -65,13 +51,17 @@ export function autocomplete(data: AutocompleteData) {
 }
 
 export async function main(ns: NS): Promise<void> {
-  DISABLED_LOGS.forEach(ns.disableLog);
+  ns.disableLog('ALL');
   if (ns.args.length !== 1) return;
   const target = String(ns.args[0]);
+  const hostname = ns.getHostname();
 
   while (true) {
-    const totalRam = ns.getServer().maxRam - 64;
-    if (totalRam <= 0) return;
+    const totalRam = ns.getServerMaxRam(hostname) - ns.getServerUsedRam(hostname);
+    if (totalRam <= SCRIPT_RAM * 3) {
+      ns.print(`Not enough RAM: ${totalRam}`);
+      return;
+    }
 
     const totalThreads = Math.floor(totalRam / SCRIPT_RAM);
 
@@ -118,7 +108,12 @@ export async function main(ns: NS): Promise<void> {
       while (batchThreads - hwgw > 0) {
         ns.run('/hacking/primitives/hack.js', h, target, JSON.stringify({ additionalMsec: wTime - hTime - 200 }));
         ns.run('/hacking/primitives/weak.js', w1, target, JSON.stringify({ additionalMsec: 0 }));
-        ns.run('/hacking/primitives/grow.js', g, target, JSON.stringify({ additionalMsec: wTime - gTime - 200 + 1000 }));
+        ns.run(
+          '/hacking/primitives/grow.js',
+          g,
+          target,
+          JSON.stringify({ additionalMsec: wTime - gTime - 200 + 1000 }),
+        );
         ns.run('/hacking/primitives/weak.js', w2, target, JSON.stringify({ additionalMsec: 1000 }));
 
         batchThreads -= hwgw;

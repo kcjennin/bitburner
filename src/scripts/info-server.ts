@@ -1,27 +1,5 @@
 import { AutocompleteData, NS } from '@ns';
-
-/** @param {NS} ns
- *  @param {boolean} all
- */
-function getAllServers(ns: NS, all = false) {
-  const servers = ['home'];
-  const result: string[] = [];
-
-  let idx = 0;
-  while (idx < servers.length) {
-    for (const newServer of ns.scan(servers[idx])) {
-      if (servers.indexOf(newServer) < 0) {
-        servers.push(newServer);
-        if (all || (ns.hasRootAccess(newServer) && ns.getServerMaxMoney(newServer) > 0)) {
-          result.push(newServer);
-        }
-      }
-    }
-    idx += 1;
-  }
-
-  return result;
-}
+import { getAllServers } from '@/lib/server-utils.js';
 
 function getServerData(ns: NS, server: string) {
   const money = ns.getServerMoneyAvailable(server);
@@ -33,8 +11,8 @@ function getServerData(ns: NS, server: string) {
 
   return (
     `\n${server}:\n` +
-    `  money: ${money} / ${moneyMax}\n` +
-    `  security: ${securityLvl} (${securityMin})\n` +
+    `  money: ${Math.round(money)} / ${moneyMax}\n` +
+    `  security: ${ns.formatNumber(securityLvl, 2)} (${securityMin})\n` +
     `  RAM: ${ram}\n` +
     `  growth: ${growthRate}`
   );
@@ -45,7 +23,7 @@ function getServers(ns: NS): string[] {
   if (ns.args.length >= 1) {
     return ns.args.map(String);
   } else {
-    return getAllServers(ns, false);
+    return getAllServers(ns);
   }
 }
 

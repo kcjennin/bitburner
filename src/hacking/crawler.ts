@@ -1,16 +1,16 @@
+import { getAllServers } from '@/lib/server-utils';
 import { NS } from '@ns';
 
-const DISABLED_LOGS = [
-  'scan',
-  'run',
-  'getServerRequiredHackingLevel',
-  'getHackingLevel',
-  'getServerNumPortsRequired',
-  'fileExists',
-  'hasRootAccess',
-];
 const EXCLUDES = ['darkweb'];
 const HOME_RESERVED = 64;
+const PREP_SCRIPTS = [
+  '/hacking/self-prep.js',
+  '/hacking/primitives/grow.js',
+  '/hacking/primitives/hack.js',
+  '/hacking/primitives/weak.js',
+];
+const PREP_PORT = 66;
+const PREP_EXCLUDES: string[] = [];
 
 interface ServerInfo {
   name: string;
@@ -18,7 +18,8 @@ interface ServerInfo {
   ram: number;
   money: number;
   security: number;
-  contract?: boolean;
+  contract: boolean;
+  growth: number;
 }
 
 function hackServer(ns: NS, server: string): boolean {
@@ -35,7 +36,6 @@ function hackServer(ns: NS, server: string): boolean {
 
   const requiredPorts = ns.getServerNumPortsRequired(server);
   if (requiredPorts > 0 && hacks < requiredPorts) {
-    ns.print(`Not enough ports open: ${server}`);
     return false;
   }
 
@@ -44,59 +44,57 @@ function hackServer(ns: NS, server: string): boolean {
   return true;
 }
 
+function startPrep(ns: NS, server: string): void {
+  if (!ns.isRunning('/hacking/self-prep.js', server) && ns.getServerMaxMoney(server) > 0) {
+    ns.scp(PREP_SCRIPTS, server, 'home');
+    ns.exec(PREP_SCRIPTS[0], server);
+  } else if (!PREP_EXCLUDES.includes(server)) {
+    PREP_EXCLUDES.push(server);
+  }
+}
+
 export async function main(ns: NS): Promise<void> {
   // Make the logs quiet
-  DISABLED_LOGS.forEach((func) => ns.disableLog(func));
+  ns.disableLog('ALL');
 
   while (true) {
-    const servers: ServerInfo[] = [];
-    let idx = 0;
+    const serverNames = getAllServers(ns);
 
-    // Start with the home server and purchased servers
-    for (const server of ['home', ...ns.getPurchasedServers()]) {
-      servers.push({
-        name: server,
-        root: true,
-        ram: ns.getServerMaxRam(server),
-        money: 0,
-        security: 0,
-        contract: false,
-      });
+    const servers = serverNames.map((name) => {
+      const root = hackServer(ns, name);
+      const ram = ns.getServerMaxRam(name);
+      const money = ns.getServerMaxMoney(name);
+      const security = ns.getServerMinSecurityLevel(name);
+      const contract = ns.ls(name, '.cct').length > 0;
+      const growth = ns.getServerGrowth(name);
 
-      if (server === 'home') {
-        servers[servers.length - 1].ram -= HOME_RESERVED; // Reserve some RAM for home
-      }
+      if (root && name !== 'home' && !name.startsWith('pserv') && !PREP_EXCLUDES.includes(name)) startPrep(ns, name);
+
+      return {
+        name,
+        root,
+        ram: name === 'home' ? Math.min(0, ram - HOME_RESERVED) : ram,
+        money,
+        security,
+        contract,
+        growth,
+      } as ServerInfo;
+    });
+
+    const portData = ns.readPort(PREP_PORT);
+    if (portData !== 'NULL PORT DATA') {
+      PREP_EXCLUDES.push(portData);
+      ns.print(`Adding ${portData} to excludes list.`);
     }
 
-    // Scan for other servers
-    while (idx < servers.length) {
-      const current = servers[idx];
-      idx += 1;
+    // Write the server information to a json file
+    const serverData = JSON.stringify(
+      servers.filter((s) => !EXCLUDES.includes(s.name)),
+      null,
+      2,
+    );
+    ns.write('/data/servers.json', serverData, 'w');
 
-      if (EXCLUDES.includes(current.name)) continue;
-
-      const scanResults = ns.scan(current.name);
-      for (const server of scanResults) {
-        if (servers.some((s) => s.name === server)) continue; // Already scanned
-
-        const root = hackServer(ns, server);
-        const ram = ns.getServerMaxRam(server);
-        const money = ns.getServerMaxMoney(server);
-        const security = ns.getServerMinSecurityLevel(server);
-        const contract = ns.ls(server, '.cct').length > 0;
-
-        servers.push({
-          name: server,
-          root,
-          ram: server === 'home' ? ram - HOME_RESERVED : ram,
-          money,
-          security,
-          contract,
-        });
-      }
-
-      // sleep for 30 seconds to avoid overwhelming the server
-      await ns.sleep(30000);
-    }
+    await ns.sleep(1000);
   }
 }

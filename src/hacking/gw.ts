@@ -1,19 +1,5 @@
 import { AutocompleteData, NS } from '@ns';
 
-const DISABLED_LOGS = [
-  'clearPort',
-  // "exec",
-  'readPort',
-  'sleep',
-  'read',
-  'getServerSecurityLevel',
-  'getServerMinSecurityLevel',
-  'getWeakenTime',
-  'getServerMoneyAvailable',
-  'getServerMaxMoney',
-  'getGrowTime',
-];
-
 const SCRIPT_RAM = 1.75;
 const PORT = 1;
 
@@ -38,12 +24,21 @@ export function autocomplete(data: AutocompleteData) {
 
 /** @param {NS} ns */
 export async function main(ns: NS): Promise<void> {
-  DISABLED_LOGS.forEach(ns.disableLog);
-  if (ns.args.length !== 1) return;
+  ns.disableLog('ALL');
+  let stock = false;
 
-  const target = String(ns.args[0]);
-  const totalRam = ns.getServer().maxRam - 64;
-  if (totalRam <= 0) return;
+  if (ns.args.length === 2 && ns.args.includes('-s')) stock = true;
+  else if (ns.args.length !== 1) {
+    ns.tprint('usage: gw.js [-s] <target>');
+    return;
+  }
+
+  const target = String(ns.args.filter((arg) => arg !== '-s')[0]);
+  const totalRam = ns.getServerMaxRam(ns.getHostname()) - ns.getServerUsedRam(ns.getHostname());
+  if (totalRam <= SCRIPT_RAM) {
+    ns.print('ERROR: Not enough RAM.');
+    return;
+  }
 
   const totalThreads = Math.floor(totalRam / SCRIPT_RAM);
 
@@ -63,11 +58,11 @@ export async function main(ns: NS): Promise<void> {
       wTime = ns.getWeakenTime(target);
 
     if (g === 0) {
-      ns.print('getThreadsGW() failed.');
+      ns.print('ERROR: getThreadsGW() failed.');
       ns.exit();
     }
 
-    ns.run('/hacking/primitives/grow.js', g, target, JSON.stringify({ additionalMsec: wTime - gTime - 100 }));
+    ns.run('/hacking/primitives/grow.js', g, target, JSON.stringify({ additionalMsec: wTime - gTime - 100, stock }));
     ns.run('/hacking/primitives/weak.js', w, target);
     await ns.sleep(wTime + 1000);
   }

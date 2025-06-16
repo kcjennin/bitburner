@@ -14,7 +14,7 @@ export async function main(ns: NS): Promise<void> {
   while (lo <= hi) {
     const h = Math.floor((lo + hi) / 2);
 
-    const hackAmount = ns.hackAnalyze(ns.getServer().hostname) * h;
+    const hackAmount = ns.hackAnalyze(ns.getHostname()) * h;
     if (hackAmount >= HACK_TARGET) {
       hi = h - 1;
       continue;
@@ -24,7 +24,7 @@ export async function main(ns: NS): Promise<void> {
     const weaken1 = Math.ceil(hackSec / ns.weakenAnalyze(1));
 
     const growMult = 1 / (1 - hackAmount);
-    const grow = Math.ceil(ns.growthAnalyze(ns.getServer().hostname, growMult));
+    const grow = Math.ceil(ns.growthAnalyze(ns.getHostname(), growMult));
     const weaken2 = Math.ceil(ns.growthAnalyzeSecurity(grow) / ns.weakenAnalyze(1));
 
     const total = h + weaken1 + grow + weaken2;
