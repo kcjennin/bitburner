@@ -2,7 +2,6 @@
 
 # IDE
 .idea/
-.vscode/
 
 # Distributable
 /build
