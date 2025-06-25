@@ -1,15 +1,15 @@
 import { AutocompleteData, NS } from '@ns';
+import { PORT_MAP } from '@/lib/port-map';
 
 const SCRIPT_RAM = 1.75;
-const PORT = 1;
 
 async function getThreadsGW(ns: NS, target: string, totalThreads: number): Promise<[number, number]> {
-  ns.clearPort(PORT);
-  ns.exec('/hacking/gw-analyze.js', target, 1, totalThreads, PORT);
+  ns.clearPort(PORT_MAP.gwPort);
+  ns.exec('/hacking/gw-analyze.js', target, 1, totalThreads, PORT_MAP.gwPort);
 
   let count = 1000;
   while (count > 0) {
-    const result = ns.readPort(PORT);
+    const result = ns.readPort(PORT_MAP.gwPort);
     if (result !== 'NULL PORT DATA') return result;
     --count;
     await ns.sleep(20);

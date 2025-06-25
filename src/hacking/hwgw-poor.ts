@@ -4,13 +4,13 @@ import { PORT_MAP } from '@/lib/port-map';
 const SCRIPT_RAM = 1.75;
 
 async function getThreadsGW(ns: NS, target: string, totalThreads: number): Promise<[number, number]> {
-  ns.clearPort(PORT_MAP.hwgwPort);
-  ns.exec('/hacking/gw-analyze.js', target, 1, totalThreads, PORT_MAP.hwgwPort);
+  ns.clearPort(PORT_MAP.hwgwPoorPort);
+  ns.exec('/hacking/gw-analyze.js', target, 1, totalThreads, PORT_MAP.hwgwPoorPort);
 
   let count = 1000;
   while (count > 0) {
-    const result = ns.readPort(PORT_MAP.hwgwPort);
-    if (result !== 'NULL PORT_MAP.hwgwPort DATA') return result;
+    const result = ns.readPort(PORT_MAP.hwgwPoorPort);
+    if (result !== 'NULL PORT DATA') return result;
     --count;
     await ns.sleep(20);
   }
@@ -18,27 +18,19 @@ async function getThreadsGW(ns: NS, target: string, totalThreads: number): Promi
   return [0, 0];
 }
 
-async function getThreadsHWGW(ns: NS, target: string, totalThreads: number): Promise<[number, number, number, number]> {
-  ns.enableLog('ALL');
-  ns.clearPort(PORT_MAP.hwgwPort);
-  ns.exec('/hacking/hwgw-analyze.js', target, 1, totalThreads, PORT_MAP.hwgwPort);
+async function getThreadsHW(ns: NS, target: string, totalThreads: number): Promise<[number, number]> {
+  ns.clearPort(PORT_MAP.hwgwPoorPort);
+  ns.exec('/hacking/hw-analyze.js', target, 1, totalThreads, PORT_MAP.hwgwPoorPort);
 
-  let count = 100,
-    result;
+  let count = 1000;
   while (count > 0) {
-    result = ns.readPort(PORT_MAP.hwgwPort);
-    if (result !== 'NULL PORT_MAP.hwgwPort DATA') break;
+    const result = ns.readPort(PORT_MAP.hwgwPoorPort);
+    if (result !== 'NULL PORT DATA') return result;
     --count;
     await ns.sleep(20);
   }
 
-  ns.disableLog('ALL');
-
-  if (result === 'NULL PORT_MAP.hwgwPort DATA' || result === 'NO SOLUTION') {
-    return [0, 0, 0, 0];
-  } else {
-    return result;
-  }
+  return [0, 0];
 }
 
 function securityNotOK(ns: NS, target: string) {
@@ -86,13 +78,12 @@ export async function main(ns: NS): Promise<void> {
         ns.exit();
       }
 
-      ns.print(g, ' ', w);
       ns.run('/hacking/primitives/grow.js', g, target, JSON.stringify({ additionalMsec: wTime - gTime - 100 }));
       ns.run('/hacking/primitives/weak.js', w, target);
-      await ns.sleep(Math.max(wTime + 1000, 20));
+      await ns.sleep(wTime + 200);
     }
 
-    ns.scp('/hacking/hwgw-analyze.js', target);
+    ns.scp('/hacking/hw-analyze.js', target);
     while (!securityNotOK(ns, target) && !moneyNotOK(ns, target)) {
       ns.print('Hacking');
 
@@ -100,33 +91,24 @@ export async function main(ns: NS): Promise<void> {
         gTime = ns.getGrowTime(target),
         wTime = ns.getWeakenTime(target);
 
-      let batchThreads = totalThreads;
-      const [h, w1, g, w2] = await getThreadsHWGW(ns, target, totalThreads);
-
+      const [h, w1] = await getThreadsHW(ns, target, totalThreads);
       if (h === 0) {
-        ns.print('getThreadsHWGW() failed.');
+        ns.print('getThreadsHW() failed.');
         ns.exit();
       }
+      ns.run('/hacking/primitives/hack.js', h, target, JSON.stringify({ additionalMsec: wTime - hTime - 100 }));
+      ns.run('/hacking/primitives/weak.js', w1, target, JSON.stringify({ additionalMsec: 0 }));
+      await ns.sleep(wTime + 200);
 
-      const hwgw = h + w1 + g + w2;
-      while (batchThreads - hwgw > 0) {
-        ns.run('/hacking/primitives/hack.js', h, target, JSON.stringify({ additionalMsec: wTime - hTime - 200 }));
-        ns.run('/hacking/primitives/weak.js', w1, target, JSON.stringify({ additionalMsec: 0 }));
-        ns.run(
-          '/hacking/primitives/grow.js',
-          g,
-          target,
-          JSON.stringify({ additionalMsec: wTime - gTime - 200 + 1000 }),
-        );
-        ns.run('/hacking/primitives/weak.js', w2, target, JSON.stringify({ additionalMsec: 1000 }));
-
-        batchThreads -= hwgw;
-        await ns.sleep(100);
+      const [g, w2] = await getThreadsGW(ns, target, totalThreads);
+      if (g === 0) {
+        ns.print('getThreadsGW() failed.');
+        ns.exit();
       }
-
-      await ns.sleep(Math.max(wTime + 2000, 20));
+      ns.run('/hacking/primitives/grow.js', g, target, JSON.stringify({ additionalMsec: wTime - gTime - 100 }));
+      ns.run('/hacking/primitives/weak.js', w2, target);
+      await ns.sleep(wTime + 200);
     }
-
     await ns.sleep(100);
   }
 }

@@ -2,12 +2,20 @@ import { NS } from '@ns';
 
 /** @param {NS} ns */
 export async function main(ns: NS): Promise<void> {
-  if (ns.args.length != 1) {
+  let checkOnly = false;
+  if (ns.args.length === 2 && ns.args.includes('-c')) {
+    checkOnly = true;
+  } else if (ns.args.length !== 1) {
     ns.tprint('usage: buy-server.js <RAM>');
   }
   // How much RAM each purchased server will have. In this case, it'll
   // be 8GB.
-  const ram = parseInt(String(ns.args[0]));
+  const ram = parseInt(String(ns.args.filter((a) => a !== '-c')[0]));
+
+  if (checkOnly) {
+    ns.tprint(`Need ${ns.formatNumber(ns.getPurchasedServerCost(ram))}`);
+    return;
+  }
 
   // Get all the files from /hacking and /scripts
   const files = [ns.ls('home', '/hacking'), ns.ls('home', '/scripts')].flat();
@@ -32,7 +40,7 @@ export async function main(ns: NS): Promise<void> {
       ns.tprint(`Purchased ${hostname}.`);
       return;
     } else {
-      ns.tprint(ns.getPurchasedServerCost(ram));
+      ns.tprint(`ERROR: Need ${ns.formatNumber(ns.getPurchasedServerCost(ram))}`);
       return;
     }
   }
