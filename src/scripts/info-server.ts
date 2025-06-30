@@ -1,5 +1,5 @@
+import { getServers } from '@/lib/utils';
 import { AutocompleteData, NS } from '@ns';
-import { getAllServers } from '@/lib/server-utils.js';
 
 function getServerData(ns: NS, server: string) {
   const moneyMax = ns.getServerMaxMoney(server);
@@ -18,20 +18,16 @@ function getServerData(ns: NS, server: string) {
   );
 }
 
-/** @param {NS} ns */
-function getServers(ns: NS): string[] {
-  if (ns.args.length >= 1) {
-    return ns.args.map(String);
-  } else {
-    return getAllServers(ns);
-  }
-}
-
 export function autocomplete(data: AutocompleteData) {
   return data.servers;
 }
 
-/** @param {NS} ns */
 export async function main(ns: NS): Promise<void> {
-  getServers(ns).forEach((server) => ns.tprint(getServerData(ns, server)));
+  let servers;
+  if (ns.args.length >= 1) {
+    servers = ns.args.map(String);
+  } else {
+    servers = getServers(ns);
+  }
+  servers.forEach((server) => ns.tprint(getServerData(ns, server)));
 }

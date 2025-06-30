@@ -6,7 +6,7 @@ export async function main(ns: NS): Promise<void> {
 
   let delay = job.end - job.time - Date.now();
   if (delay < 0) {
-    ns.print(`WARN: Batch ${job.batch} ${job.type} was ${-delay}ms too late. (${job.end})`);
+    // ns.print(`WARN: Batch ${job.batch} ${job.type} was ${-delay}ms too late. (${job.end})`);
     ns.writePort(ns.pid, -delay);
     delay = 0;
   } else {
@@ -14,16 +14,16 @@ export async function main(ns: NS): Promise<void> {
   }
 
   await ns.grow(job.target, { additionalMsec: delay });
-  const end = Date.now();
+  // const end = Date.now();
 
   ns.atExit(() => {
     if (job.report) {
       ns.writePort(job.port, job.type + job.server);
-      ns.tprint(
-        `Batch ${job.batch}: ${job.type} finished at ${end.toString().slice(-6)}/${Math.round(job.end)
-          .toString()
-          .slice(-6)}`,
-      );
+      // ns.tprint(
+      //   `Batch ${job.batch}: ${job.type} finished at ${end.toString().slice(-6)}/${Math.round(job.end)
+      //     .toString()
+      //     .slice(-6)}`,
+      // );
     }
   });
 }

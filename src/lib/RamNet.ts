@@ -84,7 +84,10 @@ export class RamNet {
     return false;
   }
 
-  finish(job: Job): void {
+  finish(job: Job | undefined): void {
+    if (job === undefined) {
+      return;
+    }
     const block = this.getBlock(job.server);
     block.ram += job.cost;
     this.#totalRam += job.cost;
@@ -92,6 +95,29 @@ export class RamNet {
 
   cloneBlocks(): Block[] {
     return this.#blocks.map((block) => ({ ...block }));
+  }
+
+  simulate(threadCosts: number[]): number {
+    const pRam = this.cloneBlocks();
+    let batches = 0;
+    let found = true;
+
+    while (found) {
+      for (const cost of threadCosts) {
+        found = false;
+        const block = pRam.find((block) => block.ram >= cost);
+        if (block) {
+          block.ram -= cost;
+          found = true;
+        } else {
+          break;
+        }
+      }
+      if (found) {
+        batches++;
+      }
+    }
+    return batches;
   }
 
   printBlocks(ns: NS): void {

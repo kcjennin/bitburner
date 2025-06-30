@@ -49,7 +49,12 @@ export function getServers(
 
 /** Sorting function to get the best server for hacking. */
 export function checkTarget(ns: NS, server: string, target = 'n00dles', forms = false): string {
-  if (!ns.hasRootAccess(server) || peekTarget(ns, server) !== ns.pid) {
+  // if (!ns.hasRootAccess(server) || peekTarget(ns, server) !== ns.pid) {
+  if (!ns.hasRootAccess(server)) {
+    return target;
+  }
+
+  if (ns.getWeakenTime(server) > 300000) {
     return target;
   }
 
@@ -59,7 +64,7 @@ export function checkTarget(ns: NS, server: string, target = 'n00dles', forms = 
 
   let previousScore: number, currentScore: number;
 
-  if ((serverSim.requiredHackingSkill ?? Number.POSITIVE_INFINITY) <= player.skills.hacking / (forms ? 1 : 2)) {
+  if ((serverSim.requiredHackingSkill ?? Infinity) <= player.skills.hacking / (forms ? 1 : 2)) {
     if (forms) {
       serverSim.hackDifficulty = serverSim.minDifficulty;
       pSim.hackDifficulty = pSim.minDifficulty;
