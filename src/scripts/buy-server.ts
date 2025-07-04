@@ -2,12 +2,15 @@ import { NS } from '@ns';
 
 export async function main(ns: NS): Promise<void> {
   let checkOnly = false;
+  let buyAll = false;
   if (ns.args.length === 2 && ns.args.includes('-c')) {
     checkOnly = true;
+  } else if (ns.args.length === 2 && ns.args.includes('-a')) {
+    buyAll = true;
   } else if (ns.args.length !== 1) {
     ns.tprint('usage: buy-server.js <RAM>');
   }
-  const ram = parseInt(String(ns.args.filter((a) => a !== '-c')[0]));
+  const ram = parseInt(String(ns.args.filter((a) => !a.toString().startsWith('-'))[0]));
 
   if (checkOnly) {
     ns.tprint(`Need ${ns.formatNumber(ns.getPurchasedServerCost(ram))}`);
@@ -31,14 +34,19 @@ export async function main(ns: NS): Promise<void> {
     ) {
       ns.upgradePurchasedServer(hostname, ram);
       ns.tprint(`Upgraded ${hostname}.`);
-      return;
+      if (!buyAll) return;
     } else if (ns.getServerMoneyAvailable('home') > ns.getPurchasedServerCost(ram)) {
       ns.purchaseServer(hostname, ram);
       ns.tprint(`Purchased ${hostname}.`);
-      return;
-    } else {
+      if (!buyAll) return;
+    } else if (!buyAll) {
       ns.tprint(`ERROR: Need ${ns.formatNumber(ns.getPurchasedServerCost(ram))}`);
       return;
+    } else {
+      await ns.sleep(1000);
+      continue;
     }
+
+    i++;
   }
 }

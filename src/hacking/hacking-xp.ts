@@ -4,7 +4,7 @@ import { RamNet } from '@/lib/RamNet';
 import { copyScripts, getServers, SCRIPTS } from '@/lib/utils';
 import { NS } from '@ns';
 
-const WORKERS = ['/lib/workers/tGrow.ts', '/lib/workers/tWeaken.ts'];
+const WORKERS = ['/lib/workers/tGrow.js', '/lib/workers/tWeaken.js'];
 const JOB_TYPES = ['grow', 'weaken2'] as const;
 
 export async function main(ns: NS): Promise<void> {
@@ -56,6 +56,7 @@ export async function main(ns: NS): Promise<void> {
         JSON.stringify(job),
       );
       if (!jobPid) {
+        ns.tprint(job);
         throw new Error(`Unable to deploy ${job.type}`);
       }
       const tPort = ns.getPortHandle(jobPid);
