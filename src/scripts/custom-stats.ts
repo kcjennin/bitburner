@@ -48,10 +48,10 @@ export async function main(ns: NS) {
       values.push(ns.formatNumber(ns.getTotalScriptExpGain()) + '/s');
 
       headers.push('Share Power: ');
-      values.push(ns.formatPercent(ns.getSharePower()));
+      values.push(ns.formatPercent(ns.getSharePower() - 1));
 
       headers.push('Karma: ');
-      values.push(ns.heart.break());
+      values.push(ns.formatNumber(ns.heart.break(), 0));
 
       headers.push('People Killed: ');
       values.push(ns.getPlayer().numPeopleKilled);

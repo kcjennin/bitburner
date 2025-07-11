@@ -14,8 +14,12 @@ export class RamNet {
   constructor(ns: NS, servers: string[]) {
     for (const server of servers) {
       if (ns.hasRootAccess(server)) {
-        const maxRam = ns.getServerMaxRam(server);
-        const ram = maxRam - ns.getServerUsedRam(server);
+        let maxRam = ns.getServerMaxRam(server);
+        let ram = maxRam - ns.getServerUsedRam(server);
+        if (server === 'home') {
+          maxRam = Math.max(maxRam - 32, 0);
+          ram = Math.max(ram - 32, 0);
+        }
 
         if (ram >= 1.6) {
           const block = { server, ram };

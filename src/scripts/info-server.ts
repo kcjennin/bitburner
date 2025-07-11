@@ -11,7 +11,7 @@ function getServerData(ns: NS, server: string) {
 
   return (
     `\n${server}:\n` +
-    `  money: ${ns.formatPercent(moneyPct, 0)} of ${ns.formatNumber(moneyMax, 0, 1000, true)}\n` +
+    `  money: ${ns.formatPercent(moneyPct)} of ${ns.formatNumber(moneyMax, 3, 1000, true)}\n` +
     `  security: ${ns.formatNumber(securityLvl, 2)} (${securityMin})\n` +
     `  RAM: ${ram}\n` +
     `  growth: ${growthRate}`

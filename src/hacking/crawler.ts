@@ -3,7 +3,7 @@ import { NS } from '@ns';
 
 const EXCLUDES = ['darkweb'];
 
-function hackServer(ns: NS, server: string): boolean {
+async function hackServer(ns: NS, server: string): Promise<boolean> {
   let hacks = 0;
   if (ns.fileExists('BruteSSH.exe') && ns.brutessh(server)) hacks++;
   if (ns.fileExists('FTPCrack.exe') && ns.ftpcrack(server)) hacks++;
@@ -32,6 +32,8 @@ function programCount(ns: NS): number {
 }
 
 export async function main(ns: NS): Promise<void> {
+  const args = ns.flags([['single', false]]);
+
   // Make the logs quiet
   ns.disableLog('ALL');
   let programsShadow = -1;
@@ -42,11 +44,15 @@ export async function main(ns: NS): Promise<void> {
       const servers = getServers(ns, (server) => !ns.hasRootAccess(server) && !EXCLUDES.includes(server));
       for (const server of servers) {
         ns.print(`Trying to hack ${server}`);
-        hackServer(ns, server);
+        await hackServer(ns, server);
       }
     }
+
+    if (args.single) break;
 
     await ns.sleep(1000);
     programsShadow = programs;
   }
+
+  ns.writePort(ns.pid, 0);
 }

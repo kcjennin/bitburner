@@ -1,8 +1,6 @@
-import { NS } from '@ns';
+import { NS, ScriptArg } from '@ns';
 import { RamNet } from '@/lib/RamNet';
-import { Metrics } from './Metrics';
-
-const TARGETS_FILE = '/data/targets.json';
+import { Metrics } from '@/lib/Metrics';
 
 export const COSTS = { hack: 1.7, weaken1: 1.75, grow: 1.75, weaken2: 1.75 };
 export const WORKERS = ['/lib/workers/tHack.js', '/lib/workers/tWeaken.js', '/lib/workers/tGrow.js'];
@@ -54,9 +52,9 @@ export function checkTarget(ns: NS, server: string, target = 'n00dles', forms = 
     return target;
   }
 
-  if (ns.getWeakenTime(server) > 300000) {
-    return target;
-  }
+  // if (ns.getWeakenTime(server) > 300000) {
+  //   return target;
+  // }
 
   const player = ns.getPlayer();
   const serverSim = ns.getServer(server);
@@ -265,41 +263,79 @@ export async function prep(ns: NS, metrics: Metrics, ramNet: RamNet) {
   return true;
 }
 
-function readTargets(ns: NS): Record<string, number> {
-  if (!ns.fileExists(TARGETS_FILE)) {
-    return {};
+function buildServerGraph(ns: NS, start: string): Record<string, string[]> {
+  const graph: Record<string, string[]> = {};
+  const servers: string[] = [start];
+  let idx = 0;
+
+  while (idx < servers.length) {
+    graph[servers[idx]] = ns.scan(servers[idx]);
+    for (const newServer of graph[servers[idx]]) {
+      if (!servers.includes(newServer)) {
+        servers.push(newServer);
+      }
+    }
+    ++idx;
+  }
+  return graph;
+}
+
+function bfsPath(graph: Record<string, string[]>, start: string, goal: string): string[] {
+  const queue: string[] = [start];
+  const visited = new Set<string>([start]);
+  const parent: Record<string, string | null> = { [start]: null };
+
+  while (queue.length > 0) {
+    const node = queue.shift();
+    if (node === undefined) {
+      continue; // Skip if node is undefined
+    }
+    if (node === goal) {
+      const path: string[] = [];
+      let current: string | null = goal;
+      while (current !== null) {
+        path.push(current);
+        current = parent[current];
+      }
+      return path.reverse().slice(1);
+    }
+
+    for (const neighbor of graph[node]) {
+      if (!visited.has(neighbor)) {
+        visited.add(neighbor);
+        parent[neighbor] = node;
+        queue.push(neighbor);
+      }
+    }
+  }
+
+  throw new Error('Failed to find path to target.');
+}
+
+export function connectPath(ns: NS, start: string, target: string): string[] {
+  if (start === 'home') {
+    const path = [target];
+    let last = target;
+
+    while (last !== 'home') {
+      last = ns.scan(last)[0];
+      path.push(last);
+    }
+
+    return path.reverse().slice(1);
   } else {
-    return JSON.parse(ns.read(TARGETS_FILE));
+    const graph = buildServerGraph(ns, start);
+    return bfsPath(graph, start, target);
   }
 }
 
-function writeTargets(ns: NS, targets: Record<string, number>): void {
-  ns.write(TARGETS_FILE, JSON.stringify(targets), 'w');
-}
-
-export function aquireTarget(ns: NS, target: string, pid: number): boolean {
-  const targets = readTargets(ns);
-  if (targets[target] === pid) {
-    return true;
-  } else if (targets[target]) {
-    return false;
+export function tryRun(ns: NS, script: string, ...args: ScriptArg[]): number | undefined {
+  if (!ns.isRunning(script, 'home', ...args)) {
+    return ns.run(script, 1, ...args);
   }
-  targets[target] = pid;
-  writeTargets(ns, targets);
-  return true;
+  return undefined;
 }
 
-export function releaseTarget(ns: NS, target: string, pid: number): boolean {
-  const targets = readTargets(ns);
-  if (targets[target] === pid) {
-    delete targets[target];
-    writeTargets(ns, targets);
-    return true;
-  }
-  return false;
-}
-
-export function peekTarget(ns: NS, target: string): number {
-  const targets = readTargets(ns);
-  return targets[target] ?? ns.pid;
+export function getRam(ns: NS): number {
+  return ns.getServerMaxRam('home') - ns.getServerUsedRam('home');
 }

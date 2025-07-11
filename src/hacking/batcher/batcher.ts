@@ -1,3 +1,4 @@
+import { Deque } from '@/lib/Deque';
 import { Job } from '@/lib/Job';
 import { Metrics } from '@/lib/Metrics';
 import { RamNet } from '@/lib/RamNet';
@@ -46,7 +47,7 @@ export async function main(ns: NS): Promise<void> {
     await optimizeShotgun(ns, metrics, ramNet);
     metrics.calculate(ns);
 
-    const jobs: Job[] = [];
+    const jobs: Deque<Job> = new Deque();
     let batchCount = 0;
 
     metrics.end = Date.now() + metrics.wTime + metrics.spacer;
@@ -63,7 +64,7 @@ export async function main(ns: NS): Promise<void> {
           ramNet.printBlocks(ns);
           return;
         }
-        jobs.push(job);
+        jobs.pushBack(job);
       }
     }
 
@@ -83,23 +84,22 @@ export async function main(ns: NS): Promise<void> {
       metrics.delay += tPort.read();
     }
 
-    const batchAmount = metrics.maxMoney * metrics.greed * batchCount;
+    const batchAmount = metrics.maxMoney * metrics.greed * metrics.depth;
     const timer = setInterval(() => {
       ns.clearLog();
       ns.print(`Hacking $${ns.formatNumber(batchAmount)} from ${metrics.target}`);
       ns.print(`Greed: ${ns.formatPercent(metrics.greed)}`);
-      ns.print(`Batches: ${jobs.length}`);
+      ns.print(`Batches: ${metrics.depth}`);
       ns.print(`ETA ${ns.tFormat(metrics.end - Date.now())}`);
     }, 1000);
     ns.atExit(() => clearInterval(timer));
 
-    jobs.reverse();
-
-    while (jobs.length > 0) {
+    while (jobs.size > 0) {
       await dataPort.nextWrite();
       dataPort.clear();
 
-      ramNet.finish(jobs.pop());
+      const oldJob = jobs.popFront() as Job;
+      ramNet.finish(oldJob);
     }
 
     clearInterval(timer);
