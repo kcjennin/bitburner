@@ -1,212 +1,146 @@
-import { GangGenInfo, GangMemberInfo, NS } from '@ns';
+import { GangMemberInfo, NS } from '@ns';
 
-const MIN_MEMBERS = 6;
-const MAX_MEMBERS = 12;
-const TRAIN_CHANCE = 0.2;
-
-class Member {
-  private readonly ns: NS;
-  readonly name: string;
-  task: string;
-  info: GangMemberInfo;
-  updated: boolean;
-
-  constructor(ns: NS, name: string, task = 'Unassigned') {
-    this.ns = ns;
-    this.name = name;
-    this.task = task;
-    ns.gang.setMemberTask(name, task);
-    this.info = ns.gang.getMemberInformation(name);
-    this.updated = true;
-  }
-
-  update() {
-    this.info = this.ns.gang.getMemberInformation(this.name);
-    this.updated = true;
-  }
-
-  statSum(): number {
-    return this.info.str + this.info.def + this.info.dex + this.info.agi;
-  }
-
-  setTask(task: string, statThreshold: number, bigGang: boolean, minStats = 200) {
-    const statSum = this.statSum();
-    if (statSum < minStats || (bigGang && statSum < statThreshold)) task = 'Train Combat';
-    if (task !== this.task) {
-      this.task = task;
-      this.ns.gang.setMemberTask(this.name, task);
-    }
-  }
-}
-
-class Gang {
-  readonly ns: NS;
-  members: Member[];
-  info: GangGenInfo;
-  goal: 'train' | 'vigil' | 'start' | 'respect' | 'money' | 'warfare' | null;
-  bestStats: number;
-
-  constructor(ns: NS) {
-    this.ns = ns;
-    this.members = [];
-    this.info = ns.gang.getGangInformation();
-    this.goal = null;
-    this.bestStats = 0;
-  }
-
-  update() {
-    this.bestStats = 0;
-
-    // Mark all as un-updated
-    this.members.values().forEach((member) => {
-      member.updated = false;
-    });
-
-    // Go through current members and update/add them
-    for (const member of this.ns.gang.getMemberNames()) {
-      let m = this.members.find((m) => m.name === member);
-      if (m) m.update();
-      else {
-        m = new Member(this.ns, member);
-        this.members.push(m);
-      }
-
-      this.bestStats = Math.max(this.bestStats, m.statSum());
-    }
-
-    const removed = this.members.filter((member) => !member.updated);
-    for (const member of removed) {
-      const idx = this.members.indexOf(member);
-      this.members.splice(idx);
-    }
-
-    this.info = this.ns.gang.getGangInformation();
-  }
-
-  ascensions(multiplier = 10) {
-    for (const member of this.members) {
-      const r = this.ns.gang.getAscensionResult(member.name);
-      if (!r) continue;
-      const mpl = r.str * r.def * r.dex * r.agi;
-      if (mpl > multiplier) {
-        this.ns.gang.ascendMember(member.name);
-      }
-    }
-  }
-
-  equipment(afford = this.members.length) {
-    let money = this.ns.getServerMoneyAvailable('home');
-    for (const equip of this.ns.gang.getEquipmentNames()) {
-      const cost = this.ns.gang.getEquipmentCost(equip);
-      if (money / cost > afford) {
-        this.members.forEach((member) => {
-          if (!member.info.upgrades.includes(equip) && !member.info.augmentations.includes(equip)) {
-            if (this.ns.gang.purchaseEquipment(member.name, equip)) {
-              money -= cost;
-            }
-          }
-        });
-      }
-    }
-  }
-
-  setGoal(respect = 2e6, warfare = 2, penalty = 0.99) {
-    let maxOtherPower = 0;
-    const otherInfos = this.ns.gang.getOtherGangInformation();
-    for (const other in otherInfos) {
-      if (other === this.info.faction) continue;
-      maxOtherPower = Math.max(otherInfos[other].power, maxOtherPower);
-    }
-
-    const powerful = this.info.power > maxOtherPower * warfare;
-    this.ns.gang.setTerritoryWarfare(powerful);
-
-    if (this.members.length < MAX_MEMBERS) {
-      // Fill members first
-      this.goal = this.members.length < MIN_MEMBERS ? 'start' : 'respect';
-    } else {
-      if (this.info.wantedLevel > 2 && this.info.wantedPenalty < penalty) {
-        this.goal = 'vigil';
-      } else if (this.info.respect < respect) {
-        // Then fill respect
-        this.goal = 'respect';
-      } else if (!powerful) {
-        // Then power
-        this.goal = 'warfare';
-      } else {
-        // Then money
-        this.goal = 'money';
-      }
-    }
-  }
-
-  setTasks(statBound = 0.7) {
-    const statThreshold = this.bestStats * statBound;
-    const taskSet = (member: Member, task: string) =>
-      member.setTask(task, statThreshold, this.members.length > MIN_MEMBERS);
-    for (const member of this.members) {
-      // Chance to choose training instead of the normal action
-      const goal = Math.random() <= TRAIN_CHANCE ? 'train' : this.goal;
-      switch (goal) {
-        case 'train':
-          taskSet(member, 'Train Combat');
-          break;
-        case 'vigil':
-          taskSet(member, 'Vigilante Justice');
-          break;
-        case 'start':
-          taskSet(member, 'Mug People');
-          break;
-        case 'respect':
-          taskSet(member, 'Terrorism');
-          break;
-        case 'money':
-          taskSet(member, 'Human Trafficking');
-          break;
-        case 'warfare':
-          taskSet(member, 'Territory Warfare');
-          break;
-      }
-    }
-  }
-
-  numMembers() {
-    return this.members.length;
-  }
-}
+const WARFARE_MULTIPLIER = 2;
+const WARFARE_CHANCE = 0.2;
+const RESPECT_GOAL = 2e6;
 
 export async function main(ns: NS): Promise<void> {
   ns.disableLog('ALL');
   ns.ui.openTail();
 
-  while (true) {
-    const gang = new Gang(ns);
-    gang.update();
+  let nextTick = undefined;
+  let shadowOgis = undefined;
 
-    if (ns.gang.canRecruitMember()) {
-      ns.gang.recruitMember(`member-${Math.random().toString().substring(2, 4)}`);
+  while (true) {
+    const gi = ns.gang.getGangInformation();
+    const focusMoney = gi.respect >= RESPECT_GOAL;
+
+    // recruit
+    ns.gang.recruitMember(Math.random().toString().slice(2, 4));
+    const members = ns.gang.getMemberNames();
+
+    // ascend
+    members.forEach((m) => ascendMember(ns, m));
+
+    // warfare
+    const ogis = ns.gang.getOtherGangInformation();
+    let newTick = false;
+    for (const og in ogis) {
+      if (og === gi.faction) continue;
+      const ogiCurrent = ogis[og];
+      const ogiPrev = shadowOgis?.[og] ?? ogiCurrent;
+
+      const powerChanged = ogiCurrent.power != ogiPrev.power;
+      const territoryChanged = ogiCurrent.territory != ogiPrev.territory;
+
+      if (powerChanged || territoryChanged) {
+        newTick = true;
+      }
     }
 
-    gang.ascensions();
+    if (newTick) {
+      if (nextTick) {
+        members.forEach((m) => {
+          const mi = ns.gang.getMemberInformation(m);
+          const task = getTask(ns, m, focusMoney);
+          if (mi.task !== task) ns.gang.setMemberTask(m, task);
+        });
+      }
+      nextTick = Date.now() + 19000;
+    }
 
-    gang.equipment();
+    shadowOgis = ogis;
 
-    gang.setGoal();
+    if (gi.territory < 1) {
+      if (nextTick && Date.now() + 1000 > nextTick) {
+        members.forEach((m) => ns.gang.setMemberTask(m, 'Territory Warfare'));
+      }
 
-    gang.setTasks();
+      const engage = gi.power > powerRequirement(ns, gi.faction);
+      if (engage !== gi.territoryWarfareEngaged) ns.gang.setTerritoryWarfare(engage);
+    } else if (gi.territoryWarfareEngaged) {
+      ns.gang.setTerritoryWarfare(false);
+    }
 
-    const timer = setInterval(() => {
-      ns.clearLog();
-      ns.print(`Goal: ${gang.goal}`);
-      ns.print(`Respect: ${ns.formatNumber(gang.info.respect)}`);
-      ns.print(`Best Stats: ${gang.bestStats}`);
-      ns.print(`Power: ${ns.formatNumber(gang.info.power)}`);
-      ns.print(`Territory: ${ns.formatPercent(gang.info.territory)}`);
-      ns.print(`Clash: ${ns.formatPercent(gang.info.territoryClashChance)}`);
-    }, 1000);
-    ns.atExit(() => clearInterval(timer));
-
-    await ns.gang.nextUpdate();
-    clearInterval(timer);
+    ns.clearLog();
+    ns.print(`Focus:           ${focusMoney ? 'Money' : 'Respect'}`);
+    ns.print(`Respect:         ${ns.formatNumber(gi.respect)}/${ns.formatNumber(RESPECT_GOAL)}`);
+    ns.print(`Power:           ${ns.formatNumber(gi.power)}/${ns.formatNumber(powerRequirement(ns, gi.faction))}`);
+    ns.print(`Territory:       ${ns.formatPercent(gi.territory)}`);
+    ns.print(`Warfare Enabled: ${gi.territoryWarfareEngaged ? 'Yes' : 'No'}`);
+    ns.print(`Next Tick:       ${ns.tFormat((nextTick ?? Date.now()) - Date.now())}`);
+    await ns.sleep(1000);
   }
+}
+
+function powerRequirement(ns: NS, faction: string, warfareMultiplier = WARFARE_MULTIPLIER): number {
+  const others = ns.gang.getOtherGangInformation();
+  let powerRequirement = 0;
+
+  for (const other in others) {
+    if (other === faction) continue;
+    powerRequirement = Math.max(powerRequirement, others[other].power);
+  }
+
+  return warfareMultiplier * powerRequirement;
+}
+
+function ascendMember(ns: NS, member: string) {
+  const info = ns.gang.getMemberInformation(member);
+  const ar = ns.gang.getAscensionResult(member);
+  if (!ar) return;
+
+  const threshold = ascendThreshold(ns, info);
+  if (ar.str >= threshold || ar.def >= threshold || ar.dex >= threshold || ar.agi >= threshold) {
+    const respect = Math.max(info.earnedRespect, 1);
+    const gRespect = Math.max(12, ns.gang.getGangInformation().respect);
+    const ratio = respect / gRespect;
+    if (ratio > 1 / 12 && gRespect - respect < RESPECT_GOAL) return;
+
+    ns.gang.ascendMember(member);
+  }
+}
+
+function ascendThreshold(ns: NS, info: GangMemberInfo): number {
+  return 1.66 - 0.62 / Math.exp((2 / info.str_asc_mult) ** 2.24);
+}
+
+function getTask(ns: NS, member: string, focusMoney: boolean): string {
+  const gi = ns.gang.getGangInformation();
+  const mi = ns.gang.getMemberInformation(member);
+
+  let TASKS = [
+    'Mug People',
+    'Deal Drugs',
+    'Strongarm Civilians',
+    'Run a Con',
+    'Armed Robbery',
+    'Traffick Illegal Arms',
+    'Threaten & Blackmail',
+    'Human Trafficking',
+    'Terrorism',
+  ];
+  if (!focusMoney) TASKS = ['Terrorism'];
+
+  const tasks = [];
+  for (const task of TASKS) {
+    const stats = ns.gang.getTaskStats(task);
+    const money = ns.formulas.gang.moneyGain(gi, mi, stats);
+    const respect = ns.formulas.gang.respectGain(gi, mi, stats);
+    const wanted = ns.formulas.gang.wantedLevelGain(gi, mi, stats);
+
+    if (!focusMoney && respect <= 0) continue;
+    if (focusMoney && money <= 0) continue;
+    if (wanted > respect / 2) continue;
+    tasks.push({ task, money, respect });
+  }
+
+  if (tasks.length > 1) {
+    const sortKey = focusMoney ? 'money' : 'respect';
+    tasks.sort((a, b) => b[sortKey] - a[sortKey]);
+  } else if (tasks.length === 0) {
+    tasks.push({ task: 'Train Combat' });
+  }
+
+  return tasks[0].task;
 }

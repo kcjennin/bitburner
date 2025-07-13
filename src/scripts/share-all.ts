@@ -8,7 +8,7 @@ export async function main(ns: NS): Promise<void> {
   dataPort.clear();
 
   while (true) {
-    const servers = getServers(ns, (server) => {
+    const servers = getServers(ns).filter((server) => {
       copyScripts(ns, server, [WORKER], true);
       return ns.hasRootAccess(server);
     });

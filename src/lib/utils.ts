@@ -2,12 +2,8 @@ import { NS, ScriptArg } from '@ns';
 import { RamNet } from '@/lib/RamNet';
 import { Metrics } from '@/lib/Metrics';
 
-export const COSTS = { hack: 1.7, weaken1: 1.75, grow: 1.75, weaken2: 1.75 };
 export const WORKERS = ['/lib/workers/tHack.js', '/lib/workers/tWeaken.js', '/lib/workers/tGrow.js'];
 export const SCRIPTS = { hack: WORKERS[0], weaken1: WORKERS[1], grow: WORKERS[2], weaken2: WORKERS[1] };
-
-export const JOB_TYPES = ['hack', 'weaken1', 'grow', 'weaken2'] as const;
-export type JobType = (typeof JOB_TYPES)[number];
 
 export type Block = { server: string; ram: number };
 
@@ -15,34 +11,15 @@ export async function main(ns: NS): Promise<void> {
   ns.print('This is a library file.');
 }
 
-/** Get's all the available servers on the network that pass the provided condition. */
-export function getServers(
-  ns: NS,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  condition = (hostname: string) => true,
-  hostname = 'home',
-  servers: string[] = [],
-  visited: string[] = [],
-): string[] {
-  if (visited.includes(hostname)) {
-    return [];
-  }
-  visited.push(hostname);
-
-  if (condition(hostname)) {
-    servers.push(hostname);
-  }
-
-  const connectedNodes = ns.scan(hostname);
-
-  if (hostname !== 'home') {
-    connectedNodes.shift();
-  }
-
-  for (const node of connectedNodes) {
-    getServers(ns, condition, node, servers, visited);
-  }
-  return servers;
+export function getServers(ns: NS): string[] {
+  const z: (t: string) => string[] = (t) => [
+    t,
+    ...ns
+      .scan(t)
+      .slice(t !== 'home' ? 1 : 0)
+      .flatMap(z),
+  ];
+  return z('home');
 }
 
 /** Sorting function to get the best server for hacking. */
@@ -51,10 +28,6 @@ export function checkTarget(ns: NS, server: string, target = 'n00dles', forms = 
   if (!ns.hasRootAccess(server)) {
     return target;
   }
-
-  // if (ns.getWeakenTime(server) > 300000) {
-  //   return target;
-  // }
 
   const player = ns.getPlayer();
   const serverSim = ns.getServer(server);
@@ -66,6 +39,11 @@ export function checkTarget(ns: NS, server: string, target = 'n00dles', forms = 
     if (forms) {
       serverSim.hackDifficulty = serverSim.minDifficulty;
       pSim.hackDifficulty = pSim.minDifficulty;
+
+      if (ns.formulas.hacking.weakenTime(serverSim, player) > 5 * 60 * 1000) {
+        // don't want to run anything super long, may change later
+        return target;
+      }
 
       previousScore =
         ((pSim.moneyMax ?? 0) / ns.formulas.hacking.weakenTime(pSim, player)) *
@@ -120,49 +98,45 @@ export async function prep(ns: NS, metrics: Metrics, ramNet: RamNet) {
     const pRam = ramNet.cloneBlocks();
     const maxThreads = Math.floor(ramNet.maxBlockSize() / 1.75);
     const totalThreads = ramNet.prepThreads();
-
     let wThreads1 = 0;
     let wThreads2 = 0;
     let gThreads = 0;
     let batchCount = 1;
-    // Modes: 0: Security, 1: Money, 2: One Shot
-    let mode = 0;
-    let script;
+    let script, mode;
+    /*
+    Modes:
+    0: Security only
+    1: Money only
+    2: One shot
+    */
 
     if (money < maxMoney) {
       gThreads = Math.ceil(ns.growthAnalyze(metrics.target, maxMoney / money));
-      wThreads2 = Math.ceil(ns.growthAnalyzeSecurity(gThreads) * 20);
+      wThreads2 = Math.ceil(ns.growthAnalyzeSecurity(gThreads) / 0.05);
     }
     if (sec > minSec) {
       wThreads1 = Math.ceil((sec - minSec) * 20);
       if (!(wThreads1 + wThreads2 + gThreads <= totalThreads && gThreads <= maxThreads)) {
-        // If we can't do it in one shot switch to security mode first
         gThreads = 0;
         wThreads2 = 0;
-        batchCount = Math.ceil(wThreads2 / totalThreads);
-        if (batchCount > 1) {
-          mode = 0;
-        }
-      } else {
-        mode = 2;
-      }
-    } else if (gThreads > maxThreads || gThreads + wThreads2 > maxThreads) {
-      // If we can't do a one-shot while growing, split it up
+        batchCount = Math.ceil(wThreads1 / totalThreads);
+        if (batchCount > 1) wThreads1 = totalThreads;
+        mode = 0;
+      } else mode = 2;
+    } else if (gThreads > maxThreads || gThreads + wThreads2 > totalThreads) {
       mode = 1;
       const oldG = gThreads;
       wThreads2 = Math.max(Math.floor(totalThreads / 13.5), 1);
       gThreads = Math.floor(wThreads2 * 12.5);
-      // number of batches to finish growing the server
       batchCount = Math.ceil(oldG / gThreads);
-    } else {
-      // We have enough resources to do it all in one shot
-      mode = 2;
-    }
+    } else mode = 2;
 
+    // Big buffer here, since all the previous calculations can take a while. One second should be more than enough.
     const wEnd1 = Date.now() + wTime + 1000;
     const gEnd = wEnd1 + metrics.spacer;
     const wEnd2 = gEnd + metrics.spacer;
 
+    // "metrics" here is basically a mock Job object. Again, this is just an artifact of repurposed old code.
     const mMetrics = {
       batch: 'prep',
       target: metrics.target,
@@ -174,61 +148,55 @@ export async function prep(ns: NS, metrics: Metrics, ramNet: RamNet) {
       server: 'none',
     };
 
+    // Actually assigning threads. We actually allow grow threads to be spread out in mode 1.
+    // This is because we don't mind if the effect is a bit reduced from higher security unlike a normal batcher.
+    // We're not trying to grow a specific amount, we're trying to grow as much as possible.
     for (const block of pRam) {
       while (block.ram >= 1.75) {
         const bMax = Math.floor(block.ram / 1.75);
         let threads = 0;
         if (wThreads1 > 0) {
           script = SCRIPTS.weaken1;
-          mMetrics.type = 'weaken1';
+          mMetrics.type = 'pWeaken1';
           mMetrics.time = wTime;
           mMetrics.end = wEnd1;
           threads = Math.min(wThreads1, bMax);
-          if (wThreads2 === 0 && wThreads1 - threads <= 0) {
-            mMetrics.report = true;
-          }
+          if (wThreads2 === 0 && wThreads1 - threads <= 0) mMetrics.report = true;
           wThreads1 -= threads;
         } else if (wThreads2 > 0) {
           script = SCRIPTS.weaken2;
-          mMetrics.type = 'weaken2';
+          mMetrics.type = 'pWeaken2';
           mMetrics.time = wTime;
           mMetrics.end = wEnd2;
           threads = Math.min(wThreads2, bMax);
-          if (wThreads2 - threads === 0) {
-            mMetrics.report = true;
-          }
+          if (wThreads2 - threads === 0) mMetrics.report = true;
           wThreads2 -= threads;
         } else if (gThreads > 0 && mode === 1) {
           script = SCRIPTS.grow;
-          mMetrics.type = 'grow';
+          mMetrics.type = 'pGrow';
           mMetrics.time = gTime;
           mMetrics.end = gEnd;
           threads = Math.min(gThreads, bMax);
           mMetrics.report = false;
           gThreads -= threads;
-        } else if (gThreads > 0 && bMax > gThreads) {
+        } else if (gThreads > 0 && bMax >= gThreads) {
           script = SCRIPTS.grow;
-          mMetrics.type = 'grow';
+          mMetrics.type = 'pGrow';
           mMetrics.time = gTime;
           mMetrics.end = gEnd;
           threads = gThreads;
           mMetrics.report = false;
           gThreads = 0;
-        } else {
-          break;
-        }
+        } else break;
         mMetrics.server = block.server;
         const pid = ns.exec(script, block.server, { threads: threads, temporary: true }, JSON.stringify(mMetrics));
-        if (!pid) {
-          ns.print(`Failed executing ${script} on ${block.server} with ${threads} threads.`);
-          throw new Error('Prep unable to assign all jobs.');
-        }
+        if (!pid) throw new Error('Unable to assign all jobs.');
         block.ram -= 1.75 * threads;
       }
     }
 
-    // UI stuff for progress
-    const tEnd = ((mode === 0 ? wEnd1 : wEnd2) - Date.now()) * Math.max(batchCount, 1) + Date.now();
+    // Fancy UI stuff to update you on progress.
+    const tEnd = ((mode === 0 ? wEnd1 : wEnd2) - Date.now()) * batchCount + Date.now();
     const timer = setInterval(() => {
       ns.clearLog();
       switch (mode) {
@@ -240,20 +208,18 @@ export async function prep(ns: NS, metrics: Metrics, ramNet: RamNet) {
           break;
         case 2:
           ns.print(`Finalizing preparation on ${metrics.target}...`);
-          break;
       }
-      ns.print(`Security: +${ns.formatNumber(sec - minSec, 3)}`);
-      ns.print(`Money: $${ns.formatNumber(money, 2)}/${ns.formatNumber(maxMoney, 2)}`);
+      ns.print(`Security: +${ns.formatNumber(sec - minSec)}`);
+      ns.print(`Money: $${ns.formatNumber(money)}/${ns.formatNumber(maxMoney)}`);
       const time = tEnd - Date.now();
       ns.print(`Estimated time remaining: ${ns.tFormat(time)}`);
-      ns.print(`~${batchCount} ${batchCount === 1 ? 'batch' : 'batches'}`);
+      ns.print(`~${batchCount} ${batchCount === 1 ? 'batch' : 'batches'}.`);
     }, 200);
     ns.atExit(() => clearInterval(timer));
 
-    // Wait for the last weaken
-    do {
-      await dataPort.nextWrite();
-    } while (!dataPort.read().startsWith('weaken'));
+    // Wait for the last weaken to finish.
+    do await dataPort.nextWrite();
+    while (!dataPort.read().startsWith('pWeaken'));
     clearInterval(timer);
     await ns.sleep(100);
 

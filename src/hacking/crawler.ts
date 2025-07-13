@@ -41,7 +41,7 @@ export async function main(ns: NS): Promise<void> {
   while (true) {
     const programs = programCount(ns);
     if (programsShadow !== programs) {
-      const servers = getServers(ns, (server) => !ns.hasRootAccess(server) && !EXCLUDES.includes(server));
+      const servers = getServers(ns).filter((server) => !ns.hasRootAccess(server) && !EXCLUDES.includes(server));
       for (const server of servers) {
         ns.print(`Trying to hack ${server}`);
         await hackServer(ns, server);

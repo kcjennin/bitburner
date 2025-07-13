@@ -1,6 +1,9 @@
 import { BladeburnerActionName, BladeburnerActionType, NS } from '@ns';
 
 export async function main(ns: NS): Promise<void> {
+  ns.disableLog('ALL');
+  ns.ui.openTail();
+
   const low = ns.args[0] as BladeburnerActionName;
   const high = ns.args[1] as BladeburnerActionName;
   const types: BladeburnerActionType[] = [];
@@ -20,16 +23,23 @@ export async function main(ns: NS): Promise<void> {
     }
   }
 
-  let staminaState = 'low';
+  let highStamina = false;
   while (true) {
     const [staminaCurrent, staminaMax] = ns.bladeburner.getStamina();
-    if (staminaState === 'high' && staminaCurrent <= staminaMax * 0.2) {
-      staminaState = 'low';
-    } else if (staminaState === 'low' && staminaCurrent > staminaMax * 0.6) {
-      staminaState = 'high';
+
+    if (staminaMax < 20) {
+      ns.bladeburner.startAction('General', 'Training');
+      await ns.sleep(ns.bladeburner.getActionTime('General', 'Training'));
+      continue;
     }
-    const actionType = staminaState === 'low' ? types[0] : types[1];
-    const actionName = staminaState === 'low' ? low : high;
+
+    if (highStamina && staminaCurrent <= staminaMax * 0.5) {
+      highStamina = false;
+    } else if (!highStamina && staminaCurrent > staminaMax * 0.9) {
+      highStamina = true;
+    }
+    const actionType = highStamina ? types[1] : types[0];
+    const actionName = highStamina ? high : low;
 
     if (!ns.bladeburner.startAction(actionType, actionName)) {
       throw new Error(
@@ -38,6 +48,11 @@ export async function main(ns: NS): Promise<void> {
         )}`,
       );
     }
+    ns.clearLog();
+    ns.print(
+      `Stamina: ${highStamina ? 'HIGH' : 'LOW'} ${ns.formatNumber(staminaCurrent)} / ${ns.formatNumber(staminaMax)}`,
+    );
+    ns.print(`Action: ${actionType} - ${actionName}`);
     await ns.sleep(ns.bladeburner.getActionTime(actionType, actionName));
   }
 }

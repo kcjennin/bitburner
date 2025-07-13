@@ -149,3 +149,6 @@ dist
 
 # game stuff
 src/data/
+src/hacking/tiny/tinygrow.js
+src/hacking/tiny/tinyhack.js
+src/hacking/tiny/tinyweaken.js

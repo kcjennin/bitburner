@@ -54,17 +54,19 @@ export class Metrics {
     this.times.grow = this.wTime * 0.8;
     // this.depth = (this.wTime / this.spacer) * 4;
 
-    const hPercent = ns.hackAnalyze(server);
-    const amount = maxMoney * greed;
-    const hThreads = Math.max(Math.floor(ns.hackAnalyzeThreads(server, amount)), 1);
-    const tGreed = hPercent * hThreads;
-    // Overestimate by 1% to help with level ups.
-    const gThreads = Math.ceil(ns.growthAnalyze(server, maxMoney / (maxMoney - maxMoney * tGreed)) * 1.01);
-    this.threads.weaken1 = Math.max(Math.ceil((hThreads * 0.002) / 0.05), 1);
-    this.threads.weaken2 = Math.max(Math.ceil((gThreads * 0.004) / 0.05), 1);
-    this.threads.hack = hThreads;
-    this.threads.grow = gThreads;
-    this.chance = ns.hackAnalyzeChance(server);
+    if (greed !== Infinity) {
+      const hPercent = ns.hackAnalyze(server);
+      const amount = maxMoney * greed;
+      const hThreads = Math.max(Math.floor(ns.hackAnalyzeThreads(server, amount)), 1);
+      const tGreed = hPercent * hThreads;
+      // Overestimate by 1% to help with level ups.
+      const gThreads = Math.ceil(ns.growthAnalyze(server, maxMoney / (maxMoney - maxMoney * tGreed)) * 1.01);
+      this.threads.weaken1 = Math.max(Math.ceil((hThreads * 0.002) / 0.05), 1);
+      this.threads.weaken2 = Math.max(Math.ceil((gThreads * 0.004) / 0.05), 1);
+      this.threads.hack = hThreads;
+      this.threads.grow = gThreads;
+      this.chance = ns.hackAnalyzeChance(server);
+    }
   }
 
   calculateGW(ns: NS) {

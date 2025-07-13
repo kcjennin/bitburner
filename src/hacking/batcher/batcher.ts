@@ -1,5 +1,6 @@
+import { NS } from '@ns';
 import { Deque } from '@/lib/Deque';
-import { Job } from '@/lib/Job';
+import { Job, JOB_TYPES } from '@/lib/Job';
 import { Metrics } from '@/lib/Metrics';
 import { RamNet } from '@/lib/RamNet';
 import {
@@ -8,13 +9,11 @@ import {
   copyScripts,
   getServers,
   isPrepped,
-  JOB_TYPES,
   prep,
   // releaseTarget,
   WORKERS,
   SCRIPTS,
 } from '@/lib/utils';
-import { NS } from '@ns';
 
 export async function main(ns: NS): Promise<void> {
   ns.disableLog('ALL');
@@ -25,7 +24,7 @@ export async function main(ns: NS): Promise<void> {
     dataPort.clear();
 
     let target = 'n00dles';
-    const servers = getServers(ns, (server) => {
+    const servers = getServers(ns).filter((server) => {
       target = checkTarget(ns, server, target, ns.fileExists('Formulas.exe', 'home'));
       copyScripts(ns, server, WORKERS, true);
       return ns.hasRootAccess(server);
