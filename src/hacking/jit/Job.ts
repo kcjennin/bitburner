@@ -27,7 +27,7 @@ export class Job {
     this.threads = target.threads[type];
     this.end = target.end;
     this.time = target.times[type];
-    this.report = type === 'weaken2';
+    this.report = true;
   }
 
   cost() {
@@ -43,6 +43,8 @@ export async function submitJob(ns: NS, job: Job): Promise<number> {
   const pid = ns.exec(job.script(), job.server, { threads: job.threads, temporary: true }, ns.pid, JSON.stringify(job));
 
   if (pid === 0) {
+    const server = ns.getServer(job.server);
+    ns.print(`INFO: ${ns.formatNumber(server.maxRam - server.ramUsed)}/${ns.formatNumber(server.maxRam)}`);
     ns.print(job);
     throw 'Failed to execute job.';
   }

@@ -11,6 +11,7 @@ export class Target {
   end: number;
   batchMoney: number;
   maxBatches: number;
+  actualMaxBatches: number;
 
   constructor(private ns: NS, public name: string, public spacer: number, public greed: number) {
     this.times = {
@@ -31,9 +32,10 @@ export class Target {
     this.end = 0;
     this.batchMoney = 0;
     this.maxBatches = 0;
+    this.actualMaxBatches = 0;
   }
 
-  update(greed: number = this.greed): Target {
+  update(ram: Expediter, scheduled: number, greed: number = this.greed): Target {
     const ns = this.ns;
     const so = ns.getServer(this.name);
     const po = ns.getPlayer();
@@ -56,7 +58,8 @@ export class Target {
     this.threads.weaken1 = Math.ceil((so.hackDifficulty - (so.minDifficulty ?? 0)) / 0.05);
     so.hackDifficulty = so.minDifficulty ?? 0;
 
-    this.threads.grow = ns.formulas.hacking.growThreads(so, po, so.moneyMax ?? 0);
+    // over approximate by 5%, hopefully reduces desyncs
+    this.threads.grow = Math.ceil(ns.formulas.hacking.growThreads(so, po, so.moneyMax ?? 0) * 1.05);
     so.moneyAvailable = so.moneyMax ?? 0;
     so.hackDifficulty += this.threads.grow * 0.004;
 
@@ -69,26 +72,29 @@ export class Target {
     batchRam += this.threads.weaken2 * this.COSTS.weaken2;
 
     const batchTime = this.times.weaken2 + 2 * this.spacer;
-    this.maxBatches = Math.ceil(this.times.weaken2 / (this.spacer * 4));
+    this.actualMaxBatches = Math.ceil(this.times.weaken2 / (this.spacer * 4));
+    // don't over allocate the batches
+    this.maxBatches = Math.max(this.actualMaxBatches - scheduled, 0);
 
     this.batchMoney *= ns.formulas.hacking.hackChance(so, po);
 
     this.ramRate = this.batchMoney / batchRam;
 
-    const ram = new Expediter(ns);
+    const ramCopy = ram.copy();
     let ramBatches = 0;
     for (let i = 0; i < this.maxBatches; ++i) {
-      if (!ram.reserve(this.threads.hack * this.COSTS.hack)) break;
-      if (!ram.reserve(this.threads.weaken1 * this.COSTS.weaken1)) break;
-      if (!ram.reserve(this.threads.grow * this.COSTS.grow)) break;
-      if (!ram.reserve(this.threads.weaken2 * this.COSTS.weaken2)) break;
+      if (!ramCopy.reserve(this.threads.hack * this.COSTS.hack)) break;
+      if (!ramCopy.reserve(this.threads.weaken1 * this.COSTS.weaken1)) break;
+      if (!ramCopy.reserve(this.threads.grow * this.COSTS.grow)) break;
+      if (!ramCopy.reserve(this.threads.weaken2 * this.COSTS.weaken2)) break;
       ++ramBatches;
     }
-    this.maxBatches = ramBatches;
+    this.maxBatches = Math.min(this.maxBatches, ramBatches);
 
     this.moneyRate = Math.ceil((this.batchMoney * this.maxBatches) / (batchTime / 1000));
 
-    this.end = Date.now() + this.times.weaken2 + this.spacer;
+    // Try to keep the current end, but we can't start batches faster than w2 time
+    this.end = Math.max(this.end, Date.now() + this.times.weaken2 + this.spacer);
 
     return this;
   }

@@ -7,34 +7,99 @@ export class Expediter {
   largest: number;
   smallest: number;
   total: number;
+  servers: Map<string, Block>;
   blocks: Block[];
 
   constructor(private ns: NS) {
     this.largest = 0;
     this.smallest = Infinity;
     this.total = 0;
+    this.servers = new Map<string, Block>();
     this.blocks = getServers(ns)
       .filter((s) => ns.getServer(s).hasAdminRights)
       .map((s) => {
         const so = ns.getServer(s);
-        const hostname = so.hostname;
-        const max = so.maxRam;
-        const ram = max - so.ramUsed;
-        const reserved = so.hostname === 'home' ? HOME_RESERVED : 0;
-        this.largest = Math.max(this.largest, ram - reserved);
-        this.smallest = Math.min(this.smallest, ram - reserved);
-        this.total += ram - reserved;
-        return { hostname, max, ram, reserved };
+        const block = {
+          hostname: so.hostname,
+          max: so.maxRam,
+          ram: so.maxRam - so.ramUsed,
+          reserved: so.hostname === 'home' ? HOME_RESERVED : 0,
+        };
+        const avail = block.ram - block.reserved;
+        this.largest = Math.max(this.largest, avail);
+        this.smallest = Math.min(this.smallest, avail);
+        this.total += avail;
+        this.servers.set(block.hostname, block);
+        return block;
       })
-      .sort((a, b) => {
-        if (a.hostname === 'home') return 1;
-        if (b.hostname === 'home') return -1;
+      .sort(Expediter.blockSort);
+  }
 
-        if (a.ram - a.reserved > b.ram - b.reserved) return 1;
-        if (a.ram - a.reserved < b.ram - b.reserved) return -1;
+  static from(other: Expediter): Expediter {
+    const clone = Object.create(Expediter.prototype) as Expediter;
+    clone.ns = other.ns;
+    clone.largest = other.largest;
+    clone.smallest = other.smallest;
+    clone.blocks = structuredClone(other.blocks);
 
-        return 0;
+    return clone;
+  }
+
+  private static blockSort(a: Block, b: Block): number {
+    if (a.hostname === 'home') return 1;
+    if (b.hostname === 'home') return -1;
+
+    if (a.ram - a.reserved > b.ram - b.reserved) return 1;
+    if (a.ram - a.reserved < b.ram - b.reserved) return -1;
+
+    return 0;
+  }
+
+  copy(): Expediter {
+    return Expediter.from(this);
+  }
+
+  update(): void {
+    let updated = false;
+    getServers(this.ns)
+      .filter((s) => this.ns.getServer(s).hasAdminRights)
+      .forEach((s) => {
+        if (!this.servers.has(s)) {
+          // If the block doesn't exist add it
+          updated = true;
+          const so = this.ns.getServer(s);
+          const block = {
+            hostname: so.hostname,
+            max: so.maxRam,
+            ram: so.maxRam - so.ramUsed,
+            reserved: so.hostname === 'home' ? HOME_RESERVED : 0,
+          };
+          const avail = block.ram - block.reserved;
+          this.largest = Math.max(this.largest, avail);
+          this.smallest = Math.min(this.smallest, avail);
+          this.total += avail;
+          this.servers.set(block.hostname, block);
+          this.blocks.push(block);
+        } else {
+          // If it does check to make sure the max ram hasn't changed
+          const block = this.servers.get(s) as Block;
+          const max = this.ns.getServer(s).maxRam;
+          if (block.max !== max) {
+            updated = true;
+
+            const so = this.ns.getServer(s);
+            let avail = block.ram - block.reserved;
+            this.total -= avail;
+            block.max = so.maxRam;
+            block.ram = so.maxRam - so.ramUsed;
+            avail = block.ram - block.reserved;
+            this.largest = Math.max(this.largest, avail);
+            this.smallest = Math.min(this.smallest, avail);
+            this.total += avail;
+          }
+        }
       });
+    if (updated) this.blocks.sort(Expediter.blockSort);
   }
 
   reserve(amount: number): string | undefined {

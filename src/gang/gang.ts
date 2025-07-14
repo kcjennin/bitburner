@@ -1,7 +1,6 @@
 import { GangMemberInfo, NS } from '@ns';
 
 const WARFARE_MULTIPLIER = 2;
-const WARFARE_CHANCE = 0.2;
 const RESPECT_GOAL = 2e6;
 
 export async function main(ns: NS): Promise<void> {
