@@ -13,21 +13,15 @@ const MIN_SHARES_PURCHASE = 5;
 const SHORT_ENABLED = false;
 const SCRIPT_INTERVAL = 6000;
 
-const TOAST_DURATION = 15_000;
-
 export function maybeSell(ns: NS, sym: string, ownedLong: number, ownedShort: number): void {
   const forecast = ns.stock.getForecast(sym);
 
   if (ownedLong > 0 && forecast < SELL_LONG_THRESHOLD) {
-    const stockPrice = ns.stock.sellStock(sym, ownedLong);
-
-    ns.toast(`Sold ${ownedLong} Long shares of ${sym} for ${ns.formatNumber(stockPrice, 3, 1000, false)}`);
+    ns.stock.sellStock(sym, ownedLong);
   }
 
   if (SHORT_ENABLED && ownedShort > 0 && forecast > SELL_SHORT_THRESHOLD) {
-    const stockPrice = ns.stock.sellShort(sym, ownedShort);
-
-    ns.toast(`Sold ${ownedShort} Short shares of ${sym} for ${ns.formatNumber(stockPrice, 3, 1000, false)}`);
+    ns.stock.sellShort(sym, ownedShort);
   }
 }
 
@@ -42,15 +36,7 @@ export function maybeBuy(ns: NS, sym: string, ownedLong: number, ownedShort: num
       if (money - MONEY_KEEP >= ns.stock.getPurchaseCost(sym, MIN_SHARES_PURCHASE, 'Long')) {
         const maxShares = ns.stock.getMaxShares(sym) * MAX_SHARE_PERCENT - ownedLong;
         const shares = Math.min((money - MONEY_KEEP - BUFFER) / price, maxShares);
-        const buyPrice = ns.stock.buyStock(sym, shares);
-
-        if (buyPrice > 0) {
-          ns.toast(
-            `Bought ${Math.round(shares)} Long shares of ${sym} for ${ns.formatNumber(buyPrice, 3, 1000, false)}`,
-            'success',
-            TOAST_DURATION,
-          );
-        }
+        ns.stock.buyStock(sym, shares);
       }
     }
 
@@ -58,15 +44,7 @@ export function maybeBuy(ns: NS, sym: string, ownedLong: number, ownedShort: num
       if (money - MONEY_KEEP >= ns.stock.getPurchaseCost(sym, MIN_SHARES_PURCHASE, 'Short')) {
         const maxShares = ns.stock.getMaxShares(sym) * MAX_SHARE_PERCENT - ownedShort;
         const shares = Math.min((money - MONEY_KEEP - BUFFER) / price, maxShares);
-        const buyPrice = ns.stock.buyShort(sym, shares);
-
-        if (buyPrice > 0) {
-          ns.toast(
-            `Bought ${Math.round(shares)} Short shares of ${sym} for ${ns.formatNumber(buyPrice, 3, 1000, false)}`,
-            'success',
-            TOAST_DURATION,
-          );
-        }
+        ns.stock.buyShort(sym, shares);
       }
     }
   }

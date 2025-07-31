@@ -1,7 +1,7 @@
 import { copyScripts, getServers } from '@/lib/utils';
 import { NS } from '@ns';
 
-const WORKER = '/lib/workers/tShare.js';
+const WORKER = '/scripts/workers/tShare.js';
 
 export async function main(ns: NS): Promise<void> {
   const dataPort = ns.getPortHandle(ns.pid);
@@ -13,12 +13,13 @@ export async function main(ns: NS): Promise<void> {
       return ns.hasRootAccess(server);
     });
 
-    for (const [idx, server] of servers.entries()) {
-      const ram = ns.getServerMaxRam(server) - ns.getServerUsedRam(server);
+    let numJobs = 0;
+    for (const server of servers) {
+      const ram = Math.max(ns.getServerMaxRam(server) - ns.getServerUsedRam(server) - (server === 'home' ? 32 : 0), 0);
       const threads = Math.floor(ram / 4);
       if (threads > 0) {
         const job = {
-          report: idx === servers.length - 1,
+          report: true,
           port: ns.pid,
           type: 'share',
           server,
@@ -28,12 +29,14 @@ export async function main(ns: NS): Promise<void> {
           ns.tprint(job);
           throw new Error('Failed to deploy job.');
         }
-        await ns.sleep(0);
+        numJobs++;
       }
     }
 
-    ns.print('Waiting for shares to finish.');
-    await dataPort.nextWrite();
-    dataPort.clear();
+    while (numJobs > 0) {
+      if (dataPort.empty()) await dataPort.nextWrite();
+      dataPort.read();
+      numJobs--;
+    }
   }
 }

@@ -5,10 +5,10 @@ export const JOB_TYPES = ['hack', 'weaken1', 'grow', 'weaken2'] as const;
 type JobType = (typeof JOB_TYPES)[number];
 const COSTS = { hack: 1.7, weaken1: 1.75, grow: 1.75, weaken2: 1.75 };
 const SCRIPTS = {
-  hack: '/lib/workers/tHack.js',
-  weaken1: '/lib/workers/tWeaken.js',
-  grow: '/lib/workers/tGrow.js',
-  weaken2: '/lib/workers/tWeaken.js',
+  hack: '/hacking/workers/tHack.js',
+  weaken1: '/hacking/workers/tWeaken.js',
+  grow: '/hacking/workers/tGrow.js',
+  weaken2: '/hacking/workers/tWeaken.js',
 };
 
 export class Job {

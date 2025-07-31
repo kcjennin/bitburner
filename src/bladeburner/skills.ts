@@ -1,21 +1,27 @@
-import { NS } from '@ns';
+import { BladeburnerSkillName, NS } from '@ns';
 
-const SKILL_A = "Blade's Intuition";
-const SKILL_B = 'Digital Observer';
+// smaller weight is better
+const SKILLS = [
+  { name: "Blade's Intuition" as BladeburnerSkillName, weight: 3 },
+  { name: 'Digital Observer' as BladeburnerSkillName, weight: 4 },
+  { name: 'Overclock' as BladeburnerSkillName, weight: 10 },
+];
 
 export async function main(ns: NS): Promise<void> {
   while (true) {
-    const costA = ns.bladeburner.getSkillUpgradeCost(SKILL_A);
-    const costB = ns.bladeburner.getSkillUpgradeCost(SKILL_B);
-    const levelA = ns.bladeburner.getSkillLevel(SKILL_A);
-    const levelB = ns.bladeburner.getSkillLevel(SKILL_B);
-    const points = ns.bladeburner.getSkillPoints();
+    const skills = SKILLS.map((s) => {
+      return {
+        name: s.name,
+        cost: ns.bladeburner.getSkillUpgradeCost(s.name),
+        level: ns.bladeburner.getSkillLevel(s.name) / s.weight,
+      };
+    }).sort((a, b) => a.level - b.level);
 
-    if (levelA / 3 < levelB / 4 && points >= costA) {
-      ns.bladeburner.upgradeSkill(SKILL_A);
-    } else if (points >= costB) {
-      ns.bladeburner.upgradeSkill(SKILL_B);
-    }
+    // Overclock maxes out at 90
+    if (skills[0].name === 'Overclock' && ns.bladeburner.getSkillLevel('Overclock') >= 90) skills.shift();
+
+    // Buy the skill, if possible
+    ns.bladeburner.upgradeSkill(skills[0].name);
 
     await ns.bladeburner.nextUpdate();
   }

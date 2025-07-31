@@ -83,11 +83,10 @@ export class Expediter {
         } else {
           // If it does check to make sure the max ram hasn't changed
           const block = this.servers.get(s) as Block;
-          const max = this.ns.getServer(s).maxRam;
-          if (block.max !== max) {
+          const so = this.ns.getServer(s);
+          if (block.max !== so.maxRam) {
             updated = true;
 
-            const so = this.ns.getServer(s);
             let avail = block.ram - block.reserved;
             this.total -= avail;
             block.max = so.maxRam;

@@ -10,7 +10,7 @@ export async function main(ns: NS): Promise<void> {
       .map((e) => ({ name: e, cost: ns.gang.getEquipmentCost(e) }))
       .sort((a, b) => a.cost - b.cost)
       .forEach(({ name, cost }) => {
-        if (cost < money / 20) {
+        if (cost < money / members.length) {
           const buys = members
             .map((m) => (ns.gang.purchaseEquipment(m, name) ? 1 : 0))
             .reduce((sum: number, a) => sum + a, 0);

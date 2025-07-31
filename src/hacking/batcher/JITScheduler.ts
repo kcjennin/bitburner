@@ -1,10 +1,10 @@
 import { NS } from '@ns';
 import { Deque } from '@/lib/Deque';
-import { Job, JOB_TYPES, submitJob } from '@/hacking/jit/Job';
-import { Target } from '@/hacking/jit/Target';
-import { Expediter } from './Expediter';
+import { Job, JOB_TYPES, submitJob } from '@/hacking/lib/Job';
+import { Target } from '@/hacking/lib/Target';
+import { Expediter } from '@/hacking/lib/Expediter';
 
-export class Scheduler {
+export class JITScheduler {
   hack: Deque<Job>;
   weaken1: Deque<Job>;
   grow: Deque<Job>;
@@ -57,7 +57,7 @@ export class Scheduler {
     return this.weaken2.peekFront()?.end;
   }
 
-  async deploy(target: Target, ram: Expediter) {
+  async deploy(target: Target, ram: Expediter): Promise<boolean> {
     const cutoff = this.cutoff();
     if (cutoff !== undefined) {
       const getStart = (job: Job | undefined) => {
@@ -82,47 +82,62 @@ export class Scheduler {
       await startAll(this.weaken2);
     }
 
-    // clear the first batch running (may have already been started)
-    const types = [];
-    for (let _ = 0; _ < 4; ++_) {
+    const types: string[] = [];
+    const received: string[] = [];
+    const receiveJob = async () => {
       const dataPort = this.ns.getPortHandle(this.ns.pid);
       if (dataPort.empty()) await dataPort.nextWrite();
       const { type, server, cost } = JSON.parse(dataPort.read());
+
       types.push(type);
+      if (types.length === 5) types.shift();
+
       ram.free(cost, server);
       this.#running--;
       this.stopped++;
-    }
-
-    if (target.delay > 0) this.ns.print(`WARN: Delay is non-zero: ${target.delay}`);
-    if (!types.every((t, i) => t === JOB_TYPES[i])) this.ns.print('WARN: Out-of-order execution.');
-  }
-
-  async resync(ram: Expediter, timeout: number) {
-    const clearQueue = (queue: Deque<Job>) => {
-      while (queue.size > 0) {
-        const job = queue.popFront() as Job;
-        ram.free(job.cost(), job.server);
+      switch (type) {
+        case 'hack':
+          received.push('hack');
+          break;
+        case 'weaken1':
+          received.push('-weaken1');
+          break;
+        case 'grow':
+          received.push('--grow');
+          break;
+        case 'weaken2':
+          received.push('---weaken2');
+          break;
       }
     };
-    clearQueue(this.hack);
-    clearQueue(this.weaken1);
-    clearQueue(this.grow);
-    clearQueue(this.weaken2);
+    const outOfOrder = () => {
+      return !types.every((t, i) => t === JOB_TYPES[i]);
+    };
 
-    const dataPort = this.ns.getPortHandle(this.ns.pid);
-    // clear running jobs
-    while (this.#running > 0 && Date.now() < timeout) {
-      if (dataPort.empty()) await dataPort.nextWrite();
-      const { server, cost } = JSON.parse(dataPort.read());
-      ram.free(cost, server);
-      this.#running--;
+    // clear the first batch running (may have already been started)
+    for (let _ = 0; _ < 4; ++_) {
+      await receiveJob();
     }
 
-    this.ns.print('WARN: Finished resync.');
-    if (this.#running !== 0) this.ns.print(`WARN: Less jobs to cleanup than expected: ${this.#running}`);
-    this.#running = 0;
-    this.started = 0;
-    this.stopped = 0;
+    // receive jobs until we're resyncronized
+    let needsResync = false;
+    while (outOfOrder() && this.#running > 0) {
+      await receiveJob();
+      needsResync = true;
+    }
+
+    if (needsResync) {
+      this.ns.write('/data/jit-output.txt', received.join('\n'), 'w');
+      this.ns.exit();
+    }
+    return needsResync;
+  }
+
+  resync(): boolean {
+    const job = this.hack.peekFront();
+    if (job === undefined) return false;
+
+    job.threads = 1;
+    return true;
   }
 }

@@ -1,24 +1,22 @@
-import { NS } from '@ns';
+import { NS, ScriptArg } from '@ns';
 
 export async function main(ns: NS): Promise<void> {
-  let checkOnly = false;
-  let buyAll = false;
-  if (ns.args.length === 2 && ns.args.includes('-c')) {
-    checkOnly = true;
-  } else if (ns.args.length === 2 && ns.args.includes('-a')) {
-    buyAll = true;
-  } else if (ns.args.length !== 1) {
-    ns.tprint('usage: buy-server.js <RAM>');
-  }
-  const ram = parseInt(String(ns.args.filter((a) => !a.toString().startsWith('-'))[0]));
+  const args = ns.flags([
+    ['a', false],
+    ['c', false],
+  ]);
+  const checkOnly = args.c;
+  const buyAll = args.a;
+  const ram = ((args._ as ScriptArg[]).at(0) ?? 0) as number;
+  const servers = ns.getPurchasedServers();
 
-  if (checkOnly) {
-    ns.tprint(`Need ${ns.formatNumber(ns.getPurchasedServerCost(ram))}`);
+  if (ram === 0) {
+    ns.tprint(`ERROR: Invalid ram: ${ram}`);
     return;
   }
 
-  const servers = ns.getPurchasedServers();
   let i = 0;
+  let cost = 0;
   while (i < ns.getPurchasedServerLimit()) {
     const hostname = `pserv-${i}`;
 
@@ -32,13 +30,24 @@ export async function main(ns: NS): Promise<void> {
       servers.includes(hostname) &&
       ns.getPurchasedServerUpgradeCost(hostname, ram) < ns.getServerMoneyAvailable('home')
     ) {
-      ns.upgradePurchasedServer(hostname, ram);
-      ns.tprint(`Upgraded ${hostname}.`);
-      if (!buyAll) return;
-    } else if (ns.getServerMoneyAvailable('home') > ns.getPurchasedServerCost(ram)) {
-      ns.purchaseServer(hostname, ram);
-      ns.tprint(`Purchased ${hostname}.`);
-      if (!buyAll) return;
+      // Exists and can upgrade
+      cost += ns.getPurchasedServerUpgradeCost(hostname, ram);
+      if (!checkOnly) {
+        ns.upgradePurchasedServer(hostname, ram);
+        ns.tprint(`Upgraded ${hostname}.`);
+      }
+    } else if (!servers.includes(hostname) && ns.getServerMoneyAvailable('home') > ns.getPurchasedServerCost(ram)) {
+      // Does not exist and can purcase
+      cost += ns.getPurchasedServerCost(ram);
+      if (!checkOnly) {
+        ns.purchaseServer(hostname, ram);
+        ns.tprint(`Purchased ${hostname}.`);
+      }
+    } else if (checkOnly) {
+      // Didn't have enough money, but we're just checking
+      cost += servers.includes(hostname)
+        ? ns.getPurchasedServerUpgradeCost(hostname, ram)
+        : ns.getPurchasedServerCost(ram);
     } else if (!buyAll) {
       ns.tprint(`ERROR: Need ${ns.formatNumber(ns.getPurchasedServerCost(ram))}`);
       return;
@@ -47,6 +56,10 @@ export async function main(ns: NS): Promise<void> {
       continue;
     }
 
+    if (!buyAll) break;
+
     i++;
   }
+
+  ns.tprint(`Total cost: $${ns.formatNumber(cost)}`);
 }

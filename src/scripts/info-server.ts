@@ -2,19 +2,24 @@ import { getServers } from '@/lib/utils';
 import { AutocompleteData, NS } from '@ns';
 
 function getServerData(ns: NS, server: string) {
-  const moneyMax = ns.getServerMaxMoney(server);
-  const moneyPct = ns.getServerMoneyAvailable(server) / moneyMax;
-  const securityLvl = ns.getServerSecurityLevel(server);
-  const securityMin = ns.getServerMinSecurityLevel(server);
-  const ram = ns.getServerMaxRam(server);
-  const growthRate = ns.getServerGrowth(server);
+  const so = ns.getServer(server);
+  const po = ns.getPlayer();
+
+  const wTime = ns.formulas.hacking.weakenTime(so, po);
+  const sec = so.hackDifficulty ?? 0;
+
+  so.hackDifficulty = so.minDifficulty ?? 0;
+  const wTime2 = ns.formulas.hacking.weakenTime(so, po);
+
+  const moneyPct = (so.moneyAvailable ?? 0) / (so.moneyMax ?? 1);
 
   return (
     `\n${server}:\n` +
-    `  money: ${ns.formatPercent(moneyPct)} of ${ns.formatNumber(moneyMax, 3, 1000, true)}\n` +
-    `  security: ${ns.formatNumber(securityLvl, 2)} (${securityMin})\n` +
-    `  RAM: ${ram}\n` +
-    `  growth: ${growthRate}`
+    `  money:       ${ns.formatPercent(moneyPct)} (${ns.formatNumber(so.moneyMax ?? 0)})\n` +
+    `  security:    ${ns.formatNumber(sec, 2)} (${ns.formatNumber(so.hackDifficulty, 2)})\n` +
+    `  RAM:         ${ns.formatRam(so.maxRam)}\n` +
+    `  growth:      ${so.serverGrowth}\n` +
+    `  weaken time: ${ns.tFormat(wTime)} (${ns.tFormat(wTime2)})`
   );
 }
 

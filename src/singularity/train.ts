@@ -1,32 +1,80 @@
-import { NS } from '@ns';
+import { GymType, NS } from '@ns';
 
-export async function main(ns: NS): Promise<void> {
-  const target = Number(ns.args[0] ?? 1200);
-  const focus = ns.args[1] !== undefined;
+export async function train(
+  ns: NS,
+  final: number,
+  flags: { str: boolean; def: boolean; dex: boolean; agi: boolean },
+  focus = false,
+  period = 3000,
+  step = 10,
+) {
   let action = 'none';
-
+  let target = step;
   while (true) {
     const {
       skills: { strength, defense, dexterity, agility },
     } = ns.getPlayer();
 
-    if (strength < target) {
-      if (action !== 'str') ns.singularity.gymWorkout('Powerhouse Gym', 'str', focus);
-      action = 'str';
-    } else if (defense < target) {
-      if (action !== 'def') ns.singularity.gymWorkout('Powerhouse Gym', 'def', focus);
-      action = 'def';
-    } else if (dexterity < target) {
-      if (action !== 'dex') ns.singularity.gymWorkout('Powerhouse Gym', 'dex', focus);
-      action = 'dex';
-    } else if (agility < target) {
-      if (action !== 'agi') ns.singularity.gymWorkout('Powerhouse Gym', 'agi', focus);
-      action = 'agi';
-    } else {
-      ns.tprint('Finished training.');
+    const stats = [
+      { stat: strength, doStat: flags.str, name: 'str' as GymType },
+      { stat: defense, doStat: flags.def, name: 'def' as GymType },
+      { stat: dexterity, doStat: flags.dex, name: 'dex' as GymType },
+      { stat: agility, doStat: flags.agi, name: 'agi' as GymType },
+    ];
+
+    const isTraining = stats.some(({ stat, doStat, name }) => {
+      if (doStat && stat < target) {
+        if (action !== name && ns.singularity.gymWorkout('Powerhouse Gym', name, focus)) {
+          action = name;
+        }
+        return true;
+      }
+      return false;
+    });
+
+    if (!isTraining) {
+      if (target < final) {
+        target += step;
+        await ns.sleep(0);
+        continue;
+      }
+      ns.toast('Finished training.');
+      ns.singularity.stopAction();
       return;
     }
 
-    await ns.sleep(10000);
+    await ns.sleep(period);
   }
+}
+
+export async function main(ns: NS): Promise<void> {
+  const args = ns.flags([
+    ['str', false],
+    ['def', false],
+    ['dex', false],
+    ['agi', false],
+    ['f', false],
+    ['period', 3000],
+    ['step', 10],
+  ]);
+  const final = Number((args._ as string[])[0] ?? 1200);
+  let flags = {
+    str: Boolean(args.str),
+    def: Boolean(args.def),
+    dex: Boolean(args.dex),
+    agi: Boolean(args.agi),
+  };
+  if (!(flags.str || flags.def || flags.dex || flags.agi)) {
+    flags = {
+      str: true,
+      def: true,
+      dex: true,
+      agi: true,
+    };
+  }
+  const focus = Boolean(args.f);
+  const period = Number(args.period);
+  const step = Number(args.step);
+
+  await train(ns, final, flags, focus, period, step);
 }

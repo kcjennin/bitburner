@@ -1,5 +1,5 @@
 import { NS } from '@ns';
-import { Expediter } from '@/hacking/jit/Expediter';
+import { Expediter } from '@/hacking/lib/Expediter';
 
 export class Target {
   private readonly COSTS = { hack: 1.7, weaken1: 1.75, grow: 1.75, weaken2: 1.75 };
@@ -33,6 +33,30 @@ export class Target {
     this.batchMoney = 0;
     this.maxBatches = 0;
     this.actualMaxBatches = 0;
+  }
+
+  static best(
+    ns: NS,
+    ram: Expediter,
+    name: string,
+    slow = false,
+    spacer = 20,
+    min = 0.01,
+    max = 0.9,
+    step = 0.01,
+  ): Target {
+    if (slow) {
+      min = 0.001;
+      step = 0.001;
+    }
+    let best = new Target(ns, name, spacer, min).update(ram, 0);
+
+    for (let greed = min + step; greed <= max; greed += step) {
+      const current = new Target(ns, name, spacer, greed).update(ram, 0);
+      if (current.weight() > best.weight()) best = current;
+    }
+    if (best.maxBatches === 0) throw 'Not enough RAM to batch his server.';
+    return best;
   }
 
   update(ram: Expediter, scheduled: number, greed: number = this.greed): Target {
@@ -97,5 +121,11 @@ export class Target {
     this.end = Math.max(this.end, Date.now() + this.times.weaken2 + this.spacer);
 
     return this;
+  }
+
+  private weight(): number {
+    const homeRam = Math.min(Math.max(this.ns.getServer('home').maxRam, 32), 512);
+    const ratio = 0.2 * (Math.log2(homeRam) - 5);
+    return this.maxBatches * (this.moneyRate * ratio + this.ramRate * (1 - ratio));
   }
 }
