@@ -2,7 +2,7 @@ import { NS } from '@ns';
 import { Expediter } from '@/hacking/lib/Expediter';
 import { getServers } from '@/lib/utils';
 import { copyScripts } from '@/hacking/lib/Job';
-import { isPrepped, prep } from '@/hacking/batcher/jit';
+import { isPrepped, prep } from '@/hacking/lib/util';
 
 export async function main(ns: NS): Promise<void> {
   ns.disableLog('ALL');

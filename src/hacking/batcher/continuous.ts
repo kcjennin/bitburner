@@ -1,10 +1,9 @@
+import { isPrepped } from '@/lib/utils';
 import { NS } from '@ns';
-import { getServers, isPrepped } from '@/lib/utils';
-import { Target } from '@/hacking/lib/Target';
 import { Expediter } from '@/hacking/lib/Expediter';
-import { JITScheduler } from '@/hacking/batcher/JITScheduler';
-import { JOB_TYPES, Job, copyScripts } from '@/hacking/lib/Job';
+import { Target } from '@/hacking/lib/Target';
 import { chooseTarget, prep } from '@/hacking/lib/util';
+import { ContinuousScheduler } from './ContinuousScheduler';
 
 export async function main(ns: NS): Promise<void> {
   ns.disableLog('ALL');
@@ -15,7 +14,7 @@ export async function main(ns: NS): Promise<void> {
   let target: Target = { target: '' } as unknown as Target;
 
   const ram = new Expediter(ns);
-  const scheduler = new JITScheduler(ns);
+  const scheduler = new ContinuousScheduler(ns);
   let tn = ns.args.at(0) as string | undefined;
   if (tn === undefined) {
     tn = chooseTarget(ns);
@@ -29,8 +28,8 @@ export async function main(ns: NS): Promise<void> {
     await ns.sleep(500);
   }
 
-  let cycles = 0;
-  let desyncs = 0;
+  const cycles = 0;
+  const desyncs = 0;
   const timer = setInterval(() => {
     ns.clearLog();
     ns.print(
@@ -48,35 +47,4 @@ export async function main(ns: NS): Promise<void> {
     ns.print(`${new Date().toLocaleTimeString()}`);
   }, 1000);
   ns.atExit(() => clearInterval(timer));
-
-  let needsResync = false;
-  while (true) {
-    // make sure all servers have the executable scripts
-    getServers(ns)
-      .filter((s) => ns.getServer(s).hasAdminRights)
-      .forEach((s) => copyScripts(ns, s));
-
-    // update metrics
-    target.update(ram, scheduler.size());
-    ram.update();
-
-    if (target.maxBatches === 0 && scheduler.size() === 0) throw 'No batches to run.';
-    for (let _ = 0; _ < target.maxBatches; ++_) {
-      for (const type of JOB_TYPES) {
-        const job = new Job(type, target);
-        const server = ram.reserve(job.cost());
-        if (server === undefined) throw 'Failed to reserve RAM for job.';
-        job.server = server;
-        scheduler.push(job);
-      }
-    }
-
-    needsResync = needsResync || (await scheduler.deploy(target, ram));
-    if (needsResync) {
-      needsResync = !scheduler.resync();
-      desyncs++;
-    }
-
-    cycles++;
-  }
 }
