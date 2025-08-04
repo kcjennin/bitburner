@@ -3,13 +3,22 @@ import { GymType, NS } from '@ns';
 function improve(ns: NS, sleeve: number, skill: string) {
   if (['str', 'def', 'dex', 'agi'].includes(skill)) {
     // gym skills
-    ns.sleeve.setToGymWorkout(sleeve, 'Powerhouse Gym', skill as GymType);
+    ns.sleeve.travel(sleeve, 'Sector-12');
+    if (!ns.sleeve.setToGymWorkout(sleeve, 'Powerhouse Gym', skill as GymType)) {
+      ns.sleeve.setToGymWorkout(sleeve, 'Millenium Fitness Gym', skill as GymType);
+    }
   } else if (skill === 'hack') {
     // hacking
-    ns.sleeve.setToUniversityCourse(sleeve, 'Rothman University', 'Algorithms');
+    ns.sleeve.travel(sleeve, 'Volhaven');
+    if (!ns.sleeve.setToUniversityCourse(sleeve, 'ZB Institute of Technology', 'Algorithms')) {
+      ns.sleeve.setToUniversityCourse(sleeve, 'Rothman University', 'Algorithms');
+    }
   } else if (skill === 'cha') {
     // charisma
-    ns.sleeve.setToUniversityCourse(sleeve, 'Rothman University', 'Management');
+    ns.sleeve.travel(sleeve, 'Volhaven');
+    if (!ns.sleeve.setToUniversityCourse(sleeve, 'ZB Institute of Technology', 'Management')) {
+      ns.sleeve.setToUniversityCourse(sleeve, 'Rothman University', 'Management');
+    }
   } else {
     throw `Invalid skill: ${skill}`;
   }

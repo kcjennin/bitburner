@@ -9,7 +9,7 @@ export class JITScheduler {
   weaken1: Deque<Job>;
   grow: Deque<Job>;
   weaken2: Deque<Job>;
-  #running: number;
+  running: number;
   started: number;
   stopped: number;
 
@@ -18,7 +18,7 @@ export class JITScheduler {
     this.weaken1 = new Deque<Job>();
     this.grow = new Deque<Job>();
     this.weaken2 = new Deque<Job>();
-    this.#running = 0;
+    this.running = 0;
     this.started = 0;
     this.stopped = 0;
   }
@@ -42,15 +42,11 @@ export class JITScheduler {
 
   size(): number {
     const sizes = [this.hack.size, this.weaken1.size, this.grow.size, this.weaken2.size];
-    return Math.ceil((sizes.reduce((sum, s) => sum + s, 0) + this.#running) / 4);
+    return Math.ceil((sizes.reduce((sum, s) => sum + s, 0) + this.running) / 4);
   }
 
   queued(): number {
     return [this.hack.size, this.weaken1.size, this.grow.size, this.weaken2.size].reduce((sum, s) => sum + s, 0);
-  }
-
-  get running(): number {
-    return this.#running;
   }
 
   cutoff(): number | undefined {
@@ -69,7 +65,7 @@ export class JITScheduler {
       if (types.length === 5) types.shift();
 
       ram.free(cost, server);
-      this.#running--;
+      this.running--;
       this.stopped++;
     };
 
@@ -79,14 +75,14 @@ export class JITScheduler {
 
     // if there are running jobs try and collect them
     let needsResync = false;
-    if (this.#running > 0) {
+    if (this.running > 0) {
       // clear the first batch running (may have already been started)
       for (let _ = 0; _ < 4; ++_) {
         await receiveJob();
       }
 
       // receive jobs until we're resyncronized
-      while (outOfOrder() && this.#running > 0) {
+      while (outOfOrder() && this.running > 0) {
         await receiveJob();
         needsResync = true;
       }
@@ -101,18 +97,30 @@ export class JITScheduler {
       };
 
       const startJobs = [];
+      let count = 0;
       for (const queue of [this.hack, this.weaken1, this.grow, this.weaken2]) {
+        if (count === 200) {
+          count = 0;
+          await this.ns.sleep(0);
+        }
         while (getStart(queue.peekFront()) <= cutoff) {
           startJobs.push(queue.popFront() as Job);
         }
+        count++;
       }
 
+      count = 0;
       for (const job of startJobs.sort((a, b) => getStart(a) - getStart(b))) {
+        if (count === 200) {
+          count = 0;
+          await this.ns.sleep(0);
+        }
         job.end += target.delay;
 
         target.delay += await submitJob(this.ns, job);
-        this.#running++;
+        this.running++;
         this.started++;
+        count++;
       }
     }
 

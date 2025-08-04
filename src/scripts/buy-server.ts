@@ -7,12 +7,13 @@ export async function main(ns: NS): Promise<void> {
   ]);
   const checkOnly = args.c;
   const buyAll = args.a;
-  const ram = ((args._ as ScriptArg[]).at(0) ?? 0) as number;
+  let ram = ((args._ as ScriptArg[]).at(0) ?? 0) as number;
   const servers = ns.getPurchasedServers();
 
-  if (ram === 0) {
-    ns.tprint(`ERROR: Invalid ram: ${ram}`);
-    return;
+  if (ram === 0 && servers.length === 0) {
+    ram = 8;
+  } else if (ram === 0) {
+    ram = servers.map(ns.getServerMaxRam).reduce((min, s) => Math.min(min, s)) * 2;
   }
 
   let i = 0;

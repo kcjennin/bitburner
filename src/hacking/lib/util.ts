@@ -68,11 +68,11 @@ export async function prep(ns: NS, ram: Expediter, target: string) {
     }
 
     while (gThreads > 0 && ram.largest >= 1.75) {
-      gThreads -= await startJob(gThreads, '/hacking/workers/tGrow.js', Date.now() + wTime + 5, gTime);
+      gThreads -= await startJob(gThreads, '/hacking/workers/tGrow.js', Date.now() + wTime + 50, gTime);
     }
 
     while (w2Threads > 0 && ram.largest >= 1.75) {
-      w2Threads -= await startJob(w2Threads, '/hacking/workers/tWeaken.js', Date.now() + wTime + 10, wTime);
+      w2Threads -= await startJob(w2Threads, '/hacking/workers/tWeaken.js', Date.now() + wTime + 100, wTime);
     }
 
     const deployedThreads = neededThreads - (w1Threads + gThreads + w2Threads);

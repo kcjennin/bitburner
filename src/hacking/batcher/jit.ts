@@ -21,34 +21,16 @@ export async function main(ns: NS): Promise<void> {
     tn = chooseTarget(ns);
     if (tn === undefined) throw 'Failed to find a target.';
   }
-  target = Target.best(ns, ram, tn, true, 5);
+  target = Target.best(ns, ram, tn, true, 30);
   if (!isPrepped(ns, target.name)) {
     await prep(ns, ram, target.name);
-    target.update(ram, scheduler.size());
     // sometimes it doesn't clear the RAM fast enough
     await ns.sleep(500);
+    target.update(ram, scheduler.size());
   }
 
   let cycles = 0;
   let desyncs = 0;
-  const timer = setInterval(() => {
-    ns.clearLog();
-    ns.print(
-      `Target:    ${target.name} (${ns.formatNumber(cycles, 3, 1000, true)}) (${ns.formatNumber(
-        desyncs,
-        3,
-        1000,
-        true,
-      )})`,
-    );
-    ns.print(`Scheduled: ${scheduler.size()}/${target.actualMaxBatches}`);
-    ns.print(`Completed: ${Math.floor(scheduler.stopped / 4)}`);
-    ns.print(`Greed:     ${ns.formatPercent(target.greed, 1)} ($${ns.formatNumber(target.batchMoney)})`);
-    ns.print(`Weaken:    ${ns.tFormat(target.times.weaken1)}`);
-    ns.print(`${new Date().toLocaleTimeString()}`);
-  }, 1000);
-  ns.atExit(() => clearInterval(timer));
-
   let needsResync = false;
   while (true) {
     // make sure all servers have the executable scripts
@@ -78,5 +60,19 @@ export async function main(ns: NS): Promise<void> {
     }
 
     cycles++;
+    ns.clearLog();
+    ns.print(
+      `Target:    ${target.name} (${ns.formatNumber(cycles, 3, 1000, true)}) (${ns.formatNumber(
+        desyncs,
+        3,
+        1000,
+        true,
+      )})`,
+    );
+    ns.print(`Scheduled: ${scheduler.size()}/${target.actualMaxBatches}`);
+    ns.print(`Completed: ${Math.floor(scheduler.stopped / 4)}`);
+    ns.print(`Greed:     ${ns.formatPercent(target.greed, 1)} ($${ns.formatNumber(target.batchMoney)})`);
+    ns.print(`Weaken:    ${ns.tFormat(target.times.weaken1)}`);
+    ns.print(`${new Date().toLocaleTimeString()}`);
   }
 }
