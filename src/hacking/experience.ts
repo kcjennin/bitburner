@@ -7,11 +7,18 @@ import { isPrepped, prep } from '@/hacking/lib/util';
 export async function main(ns: NS): Promise<void> {
   ns.disableLog('ALL');
   const tn = ns.args[0] as string | undefined;
-  if (tn === undefined) throw 'No target supplied.';
+  if (tn === undefined) {
+    ns.tprint(`usage: run ${ns.getScriptName()} <target>`);
+    ns.exit();
+  }
   const ram = new Expediter(ns);
   const dataPort = ns.getPortHandle(ns.pid);
   let fired = 0;
 
+  if (!ns.getServer(tn).hasAdminRights) {
+    ns.tprint(`Invalid target: ${tn}. No root.`);
+    ns.exit();
+  }
   if (!isPrepped(ns, tn)) await prep(ns, ram, tn);
 
   while (true) {

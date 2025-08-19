@@ -1,26 +1,28 @@
-import { GangMemberInfo, NS } from '@ns';
+import { GangMemberInfo, GangTaskStats, NS } from '@ns';
 
 const CLASH_THRESHOLD = 0.55;
-const BONUS_WARFARE_CHANCE = 0.2;
+const BONUS_WARFARE_CHANCE = 0.4;
 const RESPECT_GOAL = 2e6;
 
 export async function main(ns: NS): Promise<void> {
+  const { noGui } = ns.flags([['noGui', false]]) as { noGui: boolean };
   ns.disableLog('ALL');
-  ns.ui.openTail();
+  if (!noGui) ns.ui.openTail();
 
   let nextTick = undefined;
   let shadowOgis = undefined;
 
   while (true) {
     const gi = ns.gang.getGangInformation();
-    const focusMoney = gi.respect >= RESPECT_GOAL;
 
     // recruit
     ns.gang.recruitMember(Math.random().toString().slice(2, 4));
     const members = ns.gang.getMemberNames();
 
+    const focusMoney = gi.respect > RESPECT_GOAL;
+
     // ascend
-    members.forEach((m) => ascendMember(ns, m));
+    members.forEach((m) => ascendMember(ns, m, members.length));
 
     // warfare
     const ogis = ns.gang.getOtherGangInformation();
@@ -42,7 +44,7 @@ export async function main(ns: NS): Promise<void> {
       if (nextTick) {
         members.forEach((m) => {
           const mi = ns.gang.getMemberInformation(m);
-          const task = getTask(ns, m, focusMoney);
+          const task = chooseTask(ns, m, focusMoney);
           if (mi.task !== task) ns.gang.setMemberTask(m, task);
         });
       }
@@ -69,7 +71,9 @@ export async function main(ns: NS): Promise<void> {
 
     ns.clearLog();
     ns.print(`Focus:           ${focusMoney ? 'Money' : 'Respect'}`);
-    ns.print(`Respect:         ${ns.formatNumber(gi.respect)}/${ns.formatNumber(RESPECT_GOAL)}`);
+    ns.print(
+      `Respect:         ${ns.formatNumber(gi.respect)}${!focusMoney ? '/' + ns.formatNumber(RESPECT_GOAL) : ''}`,
+    );
     ns.print(`Worst Clash:     ${ns.formatPercent(worstClash(ns, gi.faction), 0)}`);
     ns.print(`Territory:       ${ns.formatPercent(gi.territory, 2)}`);
     ns.print(`Warfare Enabled: ${gi.territoryWarfareEngaged ? 'Yes' : 'No'}`);
@@ -90,7 +94,7 @@ function worstClash(ns: NS, faction: string): number {
   return lowestChance;
 }
 
-function ascendMember(ns: NS, member: string) {
+function ascendMember(ns: NS, member: string, gangSize: number) {
   const info = ns.gang.getMemberInformation(member);
   const ar = ns.gang.getAscensionResult(member);
   if (!ar) return;
@@ -100,7 +104,9 @@ function ascendMember(ns: NS, member: string) {
     const respect = Math.max(info.earnedRespect, 1);
     const gRespect = Math.max(12, ns.gang.getGangInformation().respect);
     const ratio = respect / gRespect;
-    if (gRespect >= 625 && ratio > 1 / 12 && gRespect - respect < RESPECT_GOAL) return;
+    // if we're between 6 and 11 members, don't reset if this member
+    // is contributing most of our respect
+    if (gangSize >= 6 && gangSize < 12 && ratio > 1 / 12) return;
 
     ns.gang.ascendMember(member);
   }
@@ -110,15 +116,11 @@ function ascendThreshold(ns: NS, info: GangMemberInfo): number {
   return 1.66 - 0.62 / Math.exp((2 / info.str_asc_mult) ** 2.24);
 }
 
-function getTask(ns: NS, member: string, focusMoney: boolean): string {
+function chooseTask(ns: NS, member: string, focusMoney: boolean): string {
   const gi = ns.gang.getGangInformation();
   const mi = ns.gang.getMemberInformation(member);
 
-  // Terrorism and Human Trafficking are best, so either do them
-  // or train for them.
-  const respectTask = 'Terrorism';
-  const respectStats = ns.gang.getTaskStats(respectTask);
-  const { task: moneyTask, stats: moneyStats } = [
+  const taskInfos = [
     'Mug People',
     'Deal Drugs',
     'Strongarm Civilians',
@@ -127,13 +129,26 @@ function getTask(ns: NS, member: string, focusMoney: boolean): string {
     'Traffick Illegal Arms',
     'Threaten & Blackmail',
     'Human Trafficking',
-  ]
-    .map((task) => {
-      const stats = ns.gang.getTaskStats(task);
-      const money = ns.formulas.gang.moneyGain(gi, mi, stats);
-      return { task, stats, money };
-    })
-    .reduce((bestT, t) => (t.money > bestT.money ? t : bestT));
+    'Terrorism',
+  ].map((task) => {
+    const stats = ns.gang.getTaskStats(task);
+    const money = ns.formulas.gang.moneyGain(gi, mi, stats);
+    const respect = ns.formulas.gang.respectGain(gi, mi, stats);
+    return { task, stats, money, respect };
+  });
+
+  // Terrorism and Human Trafficking are best, so either do them
+  // or train for them.
+  let respectTask: string, respectStats: GangTaskStats;
+  if (ns.gang.getMemberNames().length >= 6) {
+    respectTask = 'Terrorism';
+    respectStats = ns.gang.getTaskStats(respectTask);
+  } else {
+    ({ task: respectTask, stats: respectStats } = taskInfos.reduce((bestT, t) =>
+      t.respect > bestT.respect ? t : bestT,
+    ));
+  }
+  const { task: moneyTask, stats: moneyStats } = taskInfos.reduce((bestT, t) => (t.money > bestT.money ? t : bestT));
 
   const task = focusMoney ? moneyTask : respectTask;
   const stats = focusMoney ? moneyStats : respectStats;
@@ -145,6 +160,9 @@ function getTask(ns: NS, member: string, focusMoney: boolean): string {
     // If we can do best without getting too much wanted level, do it
     return task;
   } else {
+    // If we have too much penalty, do VJ instead of training
+    if (gi.wantedLevel > 2 && gi.wantedPenalty < 0.99) return 'Vigilante Justice';
+
     // Otherwise train for best
     const worstStat = Math.min(
       mi.hack * stats.hackWeight,

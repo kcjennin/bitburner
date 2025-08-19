@@ -9,15 +9,12 @@ export async function main(ns: NS): Promise<void> {
   ns.print('This is a library file.');
 }
 
-export function getServers(ns: NS): string[] {
-  const z: (t: string) => string[] = (t) => [
-    t,
-    ...ns
-      .scan(t)
-      .slice(t !== 'home' ? 1 : 0)
-      .flatMap(z),
-  ];
-  return z('home');
+export function getServers(ns: NS) {
+  const hosts = new Set(['home']);
+  hosts.forEach((h) => {
+    ns.scan(h).forEach((n) => hosts.add(n));
+  });
+  return Array.from(hosts);
 }
 
 /** Sorting function to get the best server for hacking. */

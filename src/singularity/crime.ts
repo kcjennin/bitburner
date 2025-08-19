@@ -56,10 +56,8 @@ function successRate(cs: CrimeStats, p: Player): number {
 }
 
 export async function main(ns: NS): Promise<void> {
-  const args = ns.flags([['f', false]]);
-  const focus = Boolean(args.f);
-
   while (true) {
+    const focus = ns.singularity.isFocused;
     const p = ns.getPlayer();
     const {
       skills: { hacking, strength, defense, dexterity, agility, charisma },
@@ -72,9 +70,6 @@ export async function main(ns: NS): Promise<void> {
       return { income, realIncome, chance, ...stats };
     }).sort((a, b) => b.realIncome - a.realIncome);
 
-    // crimeStats.forEach((cs) => ns.tprint(`$${ns.formatNumber(cs.realIncome * 1000)} - ${cs.type}`));
-    // return;
-
     // current best crime to run
     let current;
     const eligibleCrimes = crimeStats.filter((cs) => cs.chance > 0.8);
@@ -83,14 +78,14 @@ export async function main(ns: NS): Promise<void> {
 
       if (current.realIncome < 1) {
         // no profitable crimes, train
-        await improve(ns, 'dex');
-        await improve(ns, 'agi');
+        await improve(ns, 'dex', focus());
+        await improve(ns, 'agi', focus());
         continue;
       }
     } else {
       // no crimes at all, train
-      await improve(ns, 'dex');
-      await improve(ns, 'agi');
+      await improve(ns, 'dex', focus());
+      await improve(ns, 'agi', focus());
       continue;
     }
 
@@ -110,10 +105,10 @@ export async function main(ns: NS): Promise<void> {
       const [name] = weightedSkills
         .filter(([, s]) => s > 0)
         .reduce(([minN, minS], [n, s]) => (s < minS ? [n, s] : [minN, minS]));
-      await improve(ns, name, focus);
+      await improve(ns, name, focus());
     }
 
     // do the crime 5 times per cycle (will do 4 if unfocused)
-    await ns.sleep(ns.singularity.commitCrime(current.type as CrimeType, focus) * 5);
+    await ns.sleep(ns.singularity.commitCrime(current.type as CrimeType, focus()) * 5);
   }
 }

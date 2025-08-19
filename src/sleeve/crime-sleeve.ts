@@ -57,12 +57,7 @@ export async function main(ns: NS): Promise<void> {
   ns.disableLog('ALL');
   ns.ui.openTail();
 
-  if (ns.args.at(0) === undefined) {
-    ns.tprint(`usage: run ${ns.getScriptName()} [sleeveNumbers]`);
-    ns.exit();
-  }
-  const sleeveNumbers = (ns.args.at(0) as string).split(',').map((sn) => Number(sn));
-
+  const sleeveNumbers = ((ns.args.at(0) as string | undefined) ?? '0,1,2,3,4,5,6,7').split(',').map((sn) => Number(sn));
   const manager: [number, number, string][] = sleeveNumbers.map((sn) => [sn, 0, 'none']);
   while (true) {
     for (const sNnT of manager) {

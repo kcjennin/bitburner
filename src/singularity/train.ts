@@ -1,16 +1,27 @@
-import { GymType, NS } from '@ns';
+import { GymType, NS, ScriptArg } from '@ns';
+
+interface Flags {
+  str: boolean;
+  def: boolean;
+  dex: boolean;
+  agi: boolean;
+  f: boolean;
+  period: number;
+  step: number;
+  _: ScriptArg[];
+}
 
 export async function train(
   ns: NS,
   final: number,
   flags: { str: boolean; def: boolean; dex: boolean; agi: boolean },
-  focus = false,
   period = 3000,
   step = 10,
 ) {
   let action = 'none';
   let target = step;
   while (true) {
+    const focus = ns.singularity.isFocused;
     const {
       skills: { strength, defense, dexterity, agility },
     } = ns.getPlayer();
@@ -24,7 +35,7 @@ export async function train(
 
     const isTraining = stats.some(({ stat, doStat, name }) => {
       if (doStat && stat < target) {
-        if (action !== name && ns.singularity.gymWorkout('Powerhouse Gym', name, focus)) {
+        if (action !== name && ns.singularity.gymWorkout('Powerhouse Gym', name, focus())) {
           action = name;
         }
         return true;
@@ -53,28 +64,21 @@ export async function main(ns: NS): Promise<void> {
     ['def', false],
     ['dex', false],
     ['agi', false],
-    ['f', false],
     ['period', 3000],
     ['step', 10],
-  ]);
-  const final = Number((args._ as string[])[0] ?? 1200);
-  let flags = {
-    str: Boolean(args.str),
-    def: Boolean(args.def),
-    dex: Boolean(args.dex),
-    agi: Boolean(args.agi),
-  };
-  if (!(flags.str || flags.def || flags.dex || flags.agi)) {
-    flags = {
-      str: true,
-      def: true,
-      dex: true,
-      agi: true,
-    };
+  ]) as unknown as Flags;
+  let { str, def, dex, agi } = args;
+  const {
+    period,
+    step,
+    _: [final = 1200],
+  } = args;
+  if (!(str || def || dex || agi)) {
+    str = true;
+    def = true;
+    dex = true;
+    agi = true;
   }
-  const focus = Boolean(args.f);
-  const period = Number(args.period);
-  const step = Number(args.step);
 
-  await train(ns, final, flags, focus, period, step);
+  await train(ns, final as number, { str, def, dex, agi }, period, step);
 }

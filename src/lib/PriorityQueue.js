@@ -2,7 +2,7 @@
  * @copyright 2020 Eyas Ranjous <eyas.ranjous@gmail.com>
  * @license MIT
  */
-import { Heap } from '@/lib/Heap';
+import { Heap } from "/lib/Heap.js";
 
 /**
  * @class PriorityQueue

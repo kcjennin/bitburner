@@ -1,7 +1,9 @@
 import { FactionWorkType, NS } from '@ns';
 
-const EXCLUDES: string[] = [];
+const EXCLUDES: string[] = ['NiteSec', 'The Black Hand', 'Bitrunners'];
 const PERIOD = 1000;
+// in order of priority
+const WORK_LIST = ['security', 'field', 'hacking'];
 
 export async function main(ns: NS): Promise<void> {
   ns.disableLog('ALL');
@@ -9,13 +11,13 @@ export async function main(ns: NS): Promise<void> {
   const lastRep = { name: 'none', rep: 0 };
 
   while (true) {
+    const ownedAugments = ns.singularity.getOwnedAugmentations(true);
+    const focus = ns.singularity.isFocused;
     const factions = ns
       .getPlayer()
       .factions.filter((f) => !EXCLUDES.includes(f))
       .map((f) => {
-        const augs = ns.singularity
-          .getAugmentationsFromFaction(f)
-          .filter((aug) => !ns.singularity.getOwnedAugmentations(true).includes(aug));
+        const augs = ns.singularity.getAugmentationsFromFaction(f).filter((aug) => !ownedAugments.includes(aug));
         const maxRep = Math.min(
           475000,
           augs.reduce((max, aug) => Math.max(max, ns.singularity.getAugmentationRepReq(aug)), 0),
@@ -36,8 +38,8 @@ export async function main(ns: NS): Promise<void> {
     // try to do some work for the faction if we aren't already
     if (task.faction !== name) {
       let result = false;
-      for (const wt of ['hacking', 'field', 'security']) {
-        result = ns.singularity.workForFaction(name, wt as FactionWorkType);
+      for (const wt of WORK_LIST) {
+        result = ns.singularity.workForFaction(name, wt as FactionWorkType, focus());
         if (result) {
           task.action = wt;
           break;
