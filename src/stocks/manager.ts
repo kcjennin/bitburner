@@ -1,4 +1,5 @@
-import { StockMaster } from './StockMaster'
+import { NS } from '@ns';
+import { StockMaster } from './StockMaster';
 
 function initializeHUD() {
   const d = eval('document') as Document;
@@ -6,14 +7,14 @@ function initializeHUD() {
   if (htmlDisplay !== null) return htmlDisplay;
 
   const customElements = d.getElementById('overview-extra-hook-0')?.parentElement?.parentElement;
-  if (!customElements) throw 'Failed to get custom elements.'
+  if (!customElements) throw 'Failed to get custom elements.';
   const stockValueTracker = customElements.cloneNode(true) as HTMLElement;
 
-  stockValueTracker.querySelectorAll('p > p').forEach(el => el.parentElement?.removeChild(el))
-  stockValueTracker.querySelectorAll('p').forEach((el, i) => el.id = `stock-display-${i}`)
+  stockValueTracker.querySelectorAll('p > p').forEach((el) => el.parentElement?.removeChild(el));
+  stockValueTracker.querySelectorAll('p').forEach((el, i) => (el.id = `stock-display-${i}`));
   htmlDisplay = stockValueTracker.querySelector('#stock-display-1') as HTMLElement;
   stockValueTracker.querySelectorAll('p')[0].innerText = 'Stock';
-  htmlDisplay.innerText = '$0.000 '
+  htmlDisplay.innerText = '$0.000 ';
   customElements.parentElement?.insertBefore(stockValueTracker, customElements.parentElement?.childNodes[2]);
 
   return htmlDisplay;
@@ -24,8 +25,10 @@ export async function main(ns: NS) {
   ns.clearLog();
 
   const hudElement = initializeHUD();
-  ns.atExit(() => hudElement.parentElement?.parentElement?.parentElement?.removeChild(hudElement.parentElement?.parentElement))
-  
+  ns.atExit(() =>
+    hudElement.parentElement?.parentElement?.parentElement?.removeChild(hudElement.parentElement?.parentElement),
+  );
+
   const sm = new StockMaster(ns, hudElement);
   await sm.smRun();
 }

@@ -1,10 +1,14 @@
 import { NS } from '@ns';
+import { Stock } from './Stock';
 
-export async function main(ns: NS): Promise<void> {
-  ns.stock.getSymbols().forEach((sym) => {
-    const [l, , s] = ns.stock.getPosition(sym);
-
-    if (l > 0) ns.stock.sellStock(sym, l);
-    if (s > 0) ns.stock.sellShort(sym, s);
+export async function main(ns: NS) {
+  const stocks = ns.stock.getSymbols().map((sym) => {
+    const stock = new Stock(ns, sym);
+    stock.refresh();
+    return stock;
   });
+
+  for (const stock of stocks.filter((stock) => stock.owned)) {
+    await stock.sellAll();
+  }
 }

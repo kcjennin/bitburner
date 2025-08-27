@@ -1,13 +1,15 @@
+import { NS } from '@ns';
+
 type TransactionType = 'buyStock' | 'buyShort' | 'sellStock' | 'sellShort';
 
 export interface BuyRejection<T> {
-    blackedOut: T;
-    maxxed: T;
-    goodReturn: T;
-    validType: T;
-    tixBlackedOut: T;
-    tixRecentInversion: T;
-    tixLowProbability: T;
+  blackedOut: T;
+  maxxed: T;
+  goodReturn: T;
+  validType: T;
+  tixBlackedOut: T;
+  tixRecentInversion: T;
+  tixLowProbability: T;
 }
 
 export class Stock {
@@ -24,7 +26,7 @@ export class Stock {
   private static SELL_THRESHOLD = 0;
 
   // TIX thresholds
-  private static TIX_BUY_THRESHOLD_PROB = 0.15
+  private static TIX_BUY_THRESHOLD_PROB = 0.15;
   private static TIX_BUY_THRESHOLD = 15e-4;
   private static TIX_SELL_THRESHOLD = 5e-4;
 
@@ -107,9 +109,10 @@ export class Stock {
     }
 
     // get the largest observed % movement in a single tick
-    return this.history
-      .reduce((max, price, idx) =>
-        Math.max(max, idx == 0 ? 0 : Math.abs(this.history[idx - 1] - price) / price), 0);
+    return this.history.reduce(
+      (max, price, idx) => Math.max(max, idx == 0 ? 0 : Math.abs(this.history[idx - 1] - price) / price),
+      0,
+    );
   }
 
   get expectedReturn() {
@@ -161,12 +164,11 @@ export class Stock {
   shouldSell(): boolean {
     const threshold = this.has4s ? Stock.SELL_THRESHOLD : Stock.TIX_SELL_THRESHOLD;
     return (
-      this.absoluteReturn <= threshold ||
-      this.bullish && this.short > 0 ||
-      this.bearish && this.long > 0
-    ) && !(
-      // pre4s we need to wait for the hold time
-      !this.has4s && this.ticksHeld < Stock.MIN_HOLD
+      (this.absoluteReturn <= threshold || (this.bullish && this.short > 0) || (this.bearish && this.long > 0)) &&
+      !(
+        // pre4s we need to wait for the hold time
+        (!this.has4s && this.ticksHeld < Stock.MIN_HOLD)
+      )
     );
   }
 
@@ -189,13 +191,14 @@ export class Stock {
       reasons.tixLowProbability = Math.abs(this.forecast - 0.5) < Stock.TIX_BUY_THRESHOLD_PROB;
     }
 
-    const decision = !reasons.blackedOut
-      && !reasons.maxxed
-      && reasons.goodReturn
-      && reasons.validType
-      && !reasons.tixBlackedOut
-      && !reasons.tixRecentInversion
-      && !reasons.tixLowProbability;
+    const decision =
+      !reasons.blackedOut &&
+      !reasons.maxxed &&
+      reasons.goodReturn &&
+      reasons.validType &&
+      !reasons.tixBlackedOut &&
+      !reasons.tixRecentInversion &&
+      !reasons.tixLowProbability;
 
     return [decision, reasons];
   }
@@ -205,7 +208,9 @@ export class Stock {
       // try to predict inversions early
       const near = Stock.historyForecast(this.history.slice(0, Stock.INVERSION_WINDOW));
       // probability prior to potential inversion
-      const prev = Stock.historyForecast(this.history.slice(Stock.INVERSION_WINDOW, Stock.INVERSION_WINDOW + Stock.MARKET_CYCLE))
+      const prev = Stock.historyForecast(
+        this.history.slice(Stock.INVERSION_WINDOW, Stock.INVERSION_WINDOW + Stock.MARKET_CYCLE),
+      );
       return Stock.detectInversion(prev, near);
     } else {
       return Stock.detectInversion(this.forecastShadow, this.forecast);
@@ -213,19 +218,19 @@ export class Stock {
   }
 
   async sellAll(): Promise<boolean> {
-    let sold = {
+    const sold = {
       long: 0,
       short: 0,
-    }
+    };
     if (this.long) {
       sold.long = await this.transaction('sellStock');
-      this.ns.print(`Sold ${this.long} long shares of ${this.sym} @ ${this.ns.formatNumber(sold.long)}`)
+      this.ns.print(`Sold ${this.long} long shares of ${this.sym} @ ${this.ns.formatNumber(sold.long)}`);
     }
     if (this.short) {
       sold.short = await this.transaction('sellShort');
-      this.ns.print(`Sold ${this.short} short shares of ${this.sym} @ ${this.ns.formatNumber(sold.short)}`)
+      this.ns.print(`Sold ${this.short} short shares of ${this.sym} @ ${this.ns.formatNumber(sold.short)}`);
     }
-  
+
     return sold.long > 0 || sold.short > 0;
   }
 
@@ -233,7 +238,7 @@ export class Stock {
     const shares = action === 'buyStock' || action === 'sellStock' ? this.long : this.short;
     const jobPid = this.ns.run(`/stocks/${action}.ts`, 1, this.sym, shares);
     const jobPort = this.ns.getPortHandle(jobPid);
-  
+
     if (jobPort.empty()) await jobPort.nextWrite();
     return jobPort.read();
   }
@@ -241,14 +246,19 @@ export class Stock {
   private static historyForecast(hist: number[]): number {
     // get the number of recorded price increases in the given history and scale to [0, 1]
     if (hist.length < 2) return 0.5;
-    return hist.reduce((upticks, price, idx) => idx === 0 ? 0 : (hist[idx - 1] > price ? upticks + 1 : upticks)) / (hist.length - 1);
+    return (
+      hist.reduce((upticks, price, idx) => (idx === 0 ? 0 : hist[idx - 1] > price ? upticks + 1 : upticks)) /
+      (hist.length - 1)
+    );
   }
 
   private static detectInversion(prev: number, curr: number): boolean {
     // an inversion is detected when the two probabilites are far enough apart and within tolerance of
     // curr = (1 - prev)
     const tol2 = Stock.INVERSION_TOLERANCE / 2;
-    return ((prev >= 0.5 + tol2) && (curr <= 0.5 - tol2) && curr <= (1 - prev) + Stock.INVERSION_TOLERANCE)
-      || ((prev <= 0.5 - tol2) && (curr >= 0.5 + tol2) && curr >= (1 - prev) - Stock.INVERSION_TOLERANCE);
+    return (
+      (prev >= 0.5 + tol2 && curr <= 0.5 - tol2 && curr <= 1 - prev + Stock.INVERSION_TOLERANCE) ||
+      (prev <= 0.5 - tol2 && curr >= 0.5 + tol2 && curr >= 1 - prev - Stock.INVERSION_TOLERANCE)
+    );
   }
 }

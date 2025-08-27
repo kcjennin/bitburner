@@ -1,4 +1,5 @@
-import { Stock, BuyRejection } from './Stock'
+import { NS } from '@ns';
+import { Stock, BuyRejection } from './Stock';
 
 export class StockMaster {
   private static COMMISSION = 100e3;
@@ -36,7 +37,7 @@ export class StockMaster {
       this.ns.print(`Cycle: ${cycleTick}`);
 
       // update all the stocks and collect their total value
-      let heldStocks: Stock[] = [];
+      const heldStocks: Stock[] = [];
       let inversions = 0;
       const holdings = stocks.reduce((total, stock) => {
         if (stock.refresh()) inversions++;
@@ -51,10 +52,13 @@ export class StockMaster {
       // update the HUD
       if (this.hudElement) {
         if (heldStocks.length > 0) {
-          const liquidationValue = heldStocks.reduce((sum, stock) => sum - (stock.owned ? StockMaster.COMMISSION : 0) + stock.value, 0);
+          const liquidationValue = heldStocks.reduce(
+            (sum, stock) => sum - (stock.owned ? StockMaster.COMMISSION : 0) + stock.value,
+            0,
+          );
           this.hudElement.innerText = '$' + this.ns.formatNumber(liquidationValue);
         } else {
-          this.hudElement.innerText = '$0.000'
+          this.hudElement.innerText = '$0.000';
         }
       }
 
@@ -62,11 +66,11 @@ export class StockMaster {
       if (!this.has4s && corpus * StockMaster.PURCHASE_4S_EXPENDITURE > StockMaster.COST_4S) {
         // liquidate everything
         for (const stock of heldStocks) {
-          await sellAll(this.ns, stock);
+          await stock.sellAll();
         }
 
         this.has4s = await buy4s(this.ns);
-        this.ns.print('Bought 4S Data API Access.')
+        this.ns.print('Bought 4S Data API Access.');
         continue;
       }
 
@@ -81,14 +85,14 @@ export class StockMaster {
         // if we've found the boundary don't adjust it unless we find an even more
         // certain agreement
         StockMaster.INVERSION_AGREEMENT_THRESHOLD = Math.max(14, inversions);
-        this.ns.print('Detected inversion. Updating Market Cycle boundary.')
+        this.ns.print('Detected inversion. Updating Market Cycle boundary.');
       }
 
       // try to sell appropriate stocks
       let didSale = false;
       for (const stock of heldStocks.filter((stock) => stock.shouldSell())) {
-        didSale = didSale || (await sellAll(this.ns, stock));
-      };
+        didSale = didSale || (await stock.sellAll());
+      }
 
       // don't buy after a sale
       if (didSale) continue;
@@ -107,7 +111,7 @@ export class StockMaster {
           validType: 0,
           tixBlackedOut: 0,
           tixRecentInversion: 0,
-          tixLowProbability: 0
+          tixLowProbability: 0,
         };
 
         for (const stock of stocks.sort(StockMaster.purchaseOrder).filter((stock) => {
@@ -121,28 +125,30 @@ export class StockMaster {
         })) {
           if (moneyAvailable <= 0) break;
 
-          const budget = Math.min(moneyAvailable, maxHoldings * StockMaster.DIVERSIFICATION - stock.value)
+          const budget = Math.min(moneyAvailable, maxHoldings * StockMaster.DIVERSIFICATION - stock.value);
           const price = stock.bullish ? stock.ask : stock.bid;
-          const canPurchaseShares = Math.floor((budget - StockMaster.COMMISSION) / price)
+          const canPurchaseShares = Math.floor((budget - StockMaster.COMMISSION) / price);
           const shares = Math.min(stock.maxShares - stock.shares, canPurchaseShares);
           if (shares <= 0) continue;
-          const endValue = shares * price * ((stock.absoluteReturn + 1) ** (ticksToCycle - 1))
+          const endValue = shares * price * (stock.absoluteReturn + 1) ** (ticksToCycle - 1);
 
           // only buy if we can actually work off the commission
           if (endValue > 2 * StockMaster.COMMISSION) {
-            const bought = await (stock.bullish
-              ? stock.transaction('buyStock')
-              : stock.transaction('buyShort'));
+            const bought = await (stock.bullish ? stock.transaction('buyStock') : stock.transaction('buyShort'));
             if (bought > 0) {
               moneyAvailable -= bought * shares;
-              this.ns.print(`Bought ${stock.bullish ? stock.long : stock.short} ${stock.bullish ? 'long' : 'short'} shares of ${stock.sym} @ ${this.ns.formatNumber(bought)}`)
+              this.ns.print(
+                `Bought ${stock.bullish ? stock.long : stock.short} ${stock.bullish ? 'long' : 'short'} shares of ${
+                  stock.sym
+                } @ ${this.ns.formatNumber(bought)}`,
+              );
             }
           }
         }
 
         this.ns.print(allReasons);
       } else {
-        this.ns.print(`Not enough money.`)
+        this.ns.print(`Not enough money.`);
       }
     }
   }
