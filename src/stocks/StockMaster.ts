@@ -134,7 +134,9 @@ export class StockMaster {
 
           // only buy if we can actually work off the commission
           if (endValue > 2 * StockMaster.COMMISSION) {
-            const bought = await (stock.bullish ? stock.transaction('buyStock') : stock.transaction('buyShort'));
+            const bought = await (stock.bullish
+              ? stock.transaction('buyStock', shares)
+              : stock.transaction('buyShort', shares));
             if (bought > 0) {
               moneyAvailable -= bought * shares;
               this.ns.print(

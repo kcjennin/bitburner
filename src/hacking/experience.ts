@@ -7,22 +7,29 @@ import { isPrepped, prep } from '@/hacking/lib/util';
 export async function main(ns: NS): Promise<void> {
   ns.disableLog('ALL');
 
-  const {
-    _: [tn],
-    stock,
-  } = ns.flags([['stock', false]]) as { _: string[]; stock: boolean };
-  if (tn === undefined) {
-    ns.tprint(`usage: run ${ns.getScriptName()} <target>`);
-    ns.exit();
-  }
+  const { stock } = ns.flags([['stock', false]]) as { stock: boolean };
   const ram = new Expediter(ns);
   const dataPort = ns.getPortHandle(ns.pid);
   let fired = 0;
 
-  if (!ns.getServer(tn).hasAdminRights) {
-    ns.tprint(`Invalid target: ${tn}. No root.`);
-    ns.exit();
+  const po = ns.getPlayer();
+  const so = getServers(ns)
+    .map(ns.getServer)
+    .filter((s) => s.hasAdminRights && po.skills.hacking >= (s.requiredHackingSkill ?? Infinity))
+    .sort((a, b) => {
+      const [gtA, gtB] = [a, b].map((s) => ns.formulas.hacking.growTime(s, po));
+      const [expA, expB] = [a, b].map((s) => ns.formulas.hacking.hackExp(s, po));
+
+      // sorting by experience per grow length
+      return expB / gtB - expA / gtA;
+    })
+    .at(0);
+
+  if (so === undefined) {
+    throw 'Failed to find a server.';
   }
+  const tn = so.hostname;
+
   if (!isPrepped(ns, tn)) await prep(ns, ram, tn, stock ? 'g' : 'x');
 
   while (true) {

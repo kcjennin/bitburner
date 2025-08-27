@@ -13,7 +13,7 @@ export interface BuyRejection<T> {
 }
 
 export class Stock {
-  private static ENABLE_SHORTS = false;
+  private static ENABLE_SHORTS = true;
 
   private static HISTORY_SIZE = 151;
   private static FORECAST_WINDOW = 51;
@@ -223,20 +223,19 @@ export class Stock {
       short: 0,
     };
     if (this.long) {
-      sold.long = await this.transaction('sellStock');
+      sold.long = await this.transaction('sellStock', this.long);
       this.ns.print(`Sold ${this.long} long shares of ${this.sym} @ ${this.ns.formatNumber(sold.long)}`);
     }
     if (this.short) {
-      sold.short = await this.transaction('sellShort');
+      sold.short = await this.transaction('sellShort', this.short);
       this.ns.print(`Sold ${this.short} short shares of ${this.sym} @ ${this.ns.formatNumber(sold.short)}`);
     }
 
     return sold.long > 0 || sold.short > 0;
   }
 
-  async transaction(action: TransactionType): Promise<number> {
-    const shares = action === 'buyStock' || action === 'sellStock' ? this.long : this.short;
-    const jobPid = this.ns.run(`/stocks/${action}.ts`, 1, this.sym, shares);
+  async transaction(action: TransactionType, shares: number): Promise<number> {
+    const jobPid = this.ns.run(`/stocks/${action}.js`, 1, this.sym, shares);
     const jobPort = this.ns.getPortHandle(jobPid);
 
     if (jobPort.empty()) await jobPort.nextWrite();
