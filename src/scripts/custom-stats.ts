@@ -1,10 +1,6 @@
 import { NS } from '@ns';
 
-const HACKNET = false;
-const RAM_COST = 2.5 + (HACKNET ? 4 : 0);
-
 export async function main(ns: NS) {
-  ns.ramOverride(RAM_COST);
   const doc = eval('document');
 
   // Hook into game's overview
@@ -24,46 +20,21 @@ export async function main(ns: NS) {
       const headers = [];
       const values = [];
 
-      if (HACKNET) {
-        let hacknetTotalProduction = 0;
-        let hacknetTotalProfit = 0;
+      headers.push('----------');
+      values.push('----------');
 
-        // Calculate total hacknet income & profit
-        for (let index = 0; index <= ns.hacknet.numNodes() - 1; index++) {
-          hacknetTotalProduction += ns.hacknet.getNodeStats(index).production;
-          hacknetTotalProfit += ns.hacknet.getNodeStats(index).totalProduction;
-        }
-
-        headers.push('Hacknet Income: ');
-        values.push('$' + ns.formatNumber(hacknetTotalProduction) + '/s');
-
-        headers.push('Hacknet Profit: ');
-        values.push('$' + ns.formatNumber(hacknetTotalProfit));
-      }
-
-      headers.push('Script Income: ');
-      values.push('$' + ns.formatNumber(ns.getTotalScriptIncome()[0]) + '/s');
-
-      headers.push('Script Experience: ');
-      values.push(ns.formatNumber(ns.getTotalScriptExpGain()) + '/s');
-
-      headers.push('Share Power: ');
-      values.push(ns.formatPercent(ns.getSharePower() - 1));
-
-      headers.push('Karma: ');
+      headers.push('Karma');
       values.push(ns.formatNumber(ns.heart.break(), 0));
 
-      headers.push('People Killed: ');
-      values.push(ns.getPlayer().numPeopleKilled);
+      if (ns.stock.hasWSEAccount()) {
+        const investment = ns.stock.getSymbols().reduce((total, sym) => {
+          const [l, , s] = ns.stock.getPosition(sym);
+          return total + ns.stock.getSaleGain(sym, l, 'Long') + ns.stock.getSaleGain(sym, s, 'Short');
+        }, 0);
 
-      headers.push('City: ');
-      values.push(ns.getPlayer().city);
-
-      headers.push('Location: ');
-      values.push(ns.getPlayer().location.substring(0, 10));
-
-      headers.push('Local Time: ');
-      values.push(new Date().toLocaleTimeString());
+        headers.push('Stock Value');
+        values.push('$' + ns.formatNumber(investment));
+      }
 
       hook0.innerText = headers.join(' \n');
       hook1.innerText = values.join('\n');

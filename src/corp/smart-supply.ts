@@ -1,5 +1,4 @@
 import { CityName, CorpIndustryData, CorpMaterialName, Division, NS, Warehouse } from '@ns';
-import { loopAllDivisionsAndCities, waitState } from './utils';
 import { CorpResearchesData } from './data/CorpResearchesData';
 import { CorpUpgradesData } from './data/CorpUpgradesData';
 
@@ -49,17 +48,7 @@ type DivisionResearches = Record<ResearchName, boolean>;
 
 const smartSupplyData: Map<string, number> = new Map<string, number>();
 
-export async function main(ns: NS): Promise<void> {
-  while (true) {
-    await waitState(ns, 'START');
-    buyOptimalAmountOfInputMaterials(ns);
-
-    await waitState(ns, 'PURCHASE');
-    setSmartSupplyData(ns);
-  }
-}
-
-function buyOptimalAmountOfInputMaterials(ns: NS): void {
+export function buyOptimalAmountOfInputMaterials(ns: NS): void {
   if (ns.corporation.getCorporation().nextState !== 'PURCHASE') {
     return;
   }
@@ -143,6 +132,51 @@ function buyOptimalAmountOfInputMaterials(ns: NS): void {
       ns.corporation.buyMaterial(divisionName, city, materialName, inputMaterialData.requiredQuantity / 10);
     }
   });
+}
+
+export function setSmartSupplyData(ns: NS): void {
+  // Only set smart supply data after "PURCHASE" state
+  if (ns.corporation.getCorporation().prevState !== 'PURCHASE') {
+    return;
+  }
+  loopAllDivisionsAndCities(ns, (divisionName, city) => {
+    const division = ns.corporation.getDivision(divisionName);
+    const industrialData = ns.corporation.getIndustryData(division.type);
+    const warehouse = ns.corporation.getWarehouse(division.name, city);
+    let totalRawProduction = 0;
+
+    if (industrialData.makesMaterials) {
+      totalRawProduction += getLimitedRawProduction(ns, division, city, industrialData, warehouse, false);
+    }
+
+    if (industrialData.makesProducts) {
+      for (const productName of division.products) {
+        const product = ns.corporation.getProduct(divisionName, city, productName);
+        if (product.developmentProgress < 100) {
+          continue;
+        }
+        totalRawProduction += getLimitedRawProduction(
+          ns,
+          division,
+          city,
+          industrialData,
+          warehouse,
+          true,
+          product.size,
+        );
+      }
+    }
+
+    smartSupplyData.set(buildSmartSupplyKey(divisionName, city), totalRawProduction);
+  });
+}
+
+function loopAllDivisionsAndCities(ns: NS, callback: (divisionName: string, city: CityName) => void): void {
+  for (const division of ns.corporation.getCorporation().divisions) {
+    for (const city of Object.values(ns.enums.CityName)) {
+      callback(division, city);
+    }
+  }
 }
 
 function getCorporationUpgradeLevels(ns: NS): CorporationUpgradeLevels {
@@ -304,41 +338,4 @@ function getLimitedRawProduction(
 
   rawProduction = Math.max(rawProduction, 0);
   return rawProduction;
-}
-
-function setSmartSupplyData(ns: NS): void {
-  // Only set smart supply data after "PURCHASE" state
-  if (ns.corporation.getCorporation().prevState !== 'PURCHASE') {
-    return;
-  }
-  loopAllDivisionsAndCities(ns, (divisionName, city) => {
-    const division = ns.corporation.getDivision(divisionName);
-    const industrialData = ns.corporation.getIndustryData(division.type);
-    const warehouse = ns.corporation.getWarehouse(division.name, city);
-    let totalRawProduction = 0;
-
-    if (industrialData.makesMaterials) {
-      totalRawProduction += getLimitedRawProduction(ns, division, city, industrialData, warehouse, false);
-    }
-
-    if (industrialData.makesProducts) {
-      for (const productName of division.products) {
-        const product = ns.corporation.getProduct(divisionName, city, productName);
-        if (product.developmentProgress < 100) {
-          continue;
-        }
-        totalRawProduction += getLimitedRawProduction(
-          ns,
-          division,
-          city,
-          industrialData,
-          warehouse,
-          true,
-          product.size,
-        );
-      }
-    }
-
-    smartSupplyData.set(buildSmartSupplyKey(divisionName, city), totalRawProduction);
-  });
 }

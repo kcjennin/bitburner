@@ -9,20 +9,22 @@ const SKILLS = [
 
 export async function main(ns: NS): Promise<void> {
   while (true) {
-    const skills = SKILLS.map((s) => {
-      return {
-        name: s.name,
-        cost: ns.bladeburner.getSkillUpgradeCost(s.name),
-        level: ns.bladeburner.getSkillLevel(s.name) / s.weight,
-      };
-    }).sort((a, b) => a.level - b.level);
+    let didUpgrade = false;
+    do {
+      const skills = SKILLS.map((s) => {
+        return {
+          name: s.name,
+          cost: ns.bladeburner.getSkillUpgradeCost(s.name),
+          level: ns.bladeburner.getSkillLevel(s.name) / s.weight,
+        };
+      }).sort((a, b) => a.level - b.level);
 
-    // Overclock maxes out at 90
-    if (skills[0].name === 'Overclock' && ns.bladeburner.getSkillLevel('Overclock') >= 90) skills.shift();
+      // Overclock maxes out at 90
+      if (skills[0].name === 'Overclock' && ns.bladeburner.getSkillLevel('Overclock') >= 90) skills.shift();
 
-    // Buy the skill, if possible
-    ns.bladeburner.upgradeSkill(skills[0].name);
-
+      // Buy the skill, if possible
+      didUpgrade = ns.bladeburner.upgradeSkill(skills[0].name);
+    } while (didUpgrade);
     await ns.bladeburner.nextUpdate();
   }
 }

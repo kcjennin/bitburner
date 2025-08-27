@@ -8,6 +8,7 @@ export interface WorkerCommand {
   port?: number;
   time?: number;
   end?: number;
+  stock?: boolean;
 }
 
 export interface WorkerStatus {
@@ -39,6 +40,7 @@ export async function submitJob(
   port?: number,
   time?: number,
   end?: number,
+  stock?: boolean,
 ): Promise<number> {
   ns.scp(JOB_SCRIPTS[type], host, 'home');
   if (DEBUG) ns.write('/data/endTimes.txt', ns.formatNumber(end ?? 0, 0), 'a');
@@ -49,6 +51,7 @@ export async function submitJob(
     port,
     time,
     end,
+    stock,
   };
   const pid = ns.exec(JOB_SCRIPTS[type], host, { threads, temporary: true }, JSON.stringify(wi));
   if (pid === 0) {

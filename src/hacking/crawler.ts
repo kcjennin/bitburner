@@ -9,12 +9,15 @@ export async function hackServer(ns: NS, server: string): Promise<boolean> {
   try { ns.sqlinject(server); } catch { /* nothing */ }
   try { ns.relaysmtp(server); } catch { /* nothing */ }
   try {
-    ns.nuke(server);
-    return true;
+    return ns.nuke(server);
   } catch { /* nothing */ }
   return false;
 }
 
 export async function main(ns: NS): Promise<void> {
-  ns.tprint(`Rooted ${getServers(ns).filter((s) => hackServer(ns, s)).length} servers.`);
+  let rooted = 0;
+  for (const s of getServers(ns)) {
+    if (await hackServer(ns, s)) rooted++;
+  }
+  ns.tprint(`Rooted ${rooted} servers.`);
 }

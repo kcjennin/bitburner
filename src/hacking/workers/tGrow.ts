@@ -10,6 +10,7 @@ export async function main(ns: NS): Promise<void> {
     end = 0,
     time = 0,
     report = false,
+    stock = false,
   } = JSON.parse(ns.args[1] as string);
 
   let delay = end - time - Date.now();
@@ -20,7 +21,7 @@ export async function main(ns: NS): Promise<void> {
     ns.writePort(ns.pid, 0);
   }
 
-  await ns.grow(target, { additionalMsec: delay });
+  await ns.grow(target, { additionalMsec: delay, stock });
 
   ns.atExit(() => {
     if (report) ns.writePort(port, JSON.stringify({ type, end, server, cost: threads * 1.75 }));

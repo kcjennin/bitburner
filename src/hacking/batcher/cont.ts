@@ -138,12 +138,14 @@ export async function main(ns: NS): Promise<void> {
     exclude,
     target: cliTarget,
     spacer,
+    stock,
   } = ns.flags([
     ['debug', false],
     ['exclude', ''],
     ['target', ''],
     ['spacer', 5],
-  ]) as { debug: boolean; exclude: string; target: string; spacer: number };
+    ['stock', 'x'],
+  ]) as { debug: boolean; exclude: string; target: string; spacer: number; stock: 'g' | 'h' | 'x' };
   const excludes = exclude.split(',');
 
   ns.disableLog('ALL');
@@ -246,7 +248,7 @@ export async function main(ns: NS): Promise<void> {
     );
     let hacking = po.skills.hacking;
 
-    while (running < depth - 1) {
+    while (running < depth) {
       const hosts = {
         h: pool.reserve(threads.h * JOB_RAM.h),
         w1: pool.reserve(threads.w1 * JOB_RAM.w1),
@@ -257,9 +259,11 @@ export async function main(ns: NS): Promise<void> {
 
       // can't finish faster than a w1
       if (endTime < Date.now() + times.w1) endTime = Date.now() + times.w1;
-      endTime += (await submitJob(ns, hosts.h!, threads.h, 'h', target, ns.pid, times.h, endTime)) + spacer;
+      endTime +=
+        (await submitJob(ns, hosts.h!, threads.h, 'h', target, ns.pid, times.h, endTime, stock === 'h')) + spacer;
       endTime += (await submitJob(ns, hosts.w1!, threads.w1, 'w1', target, ns.pid, times.w1, endTime)) + spacer;
-      endTime += (await submitJob(ns, hosts.g!, threads.g, 'g', target, ns.pid, times.g, endTime)) + spacer;
+      endTime +=
+        (await submitJob(ns, hosts.g!, threads.g, 'g', target, ns.pid, times.g, endTime, stock === 'g')) + spacer;
       endTime += (await submitJob(ns, hosts.w2!, threads.w2, 'w2', target, ns.pid, times.w2, endTime)) + spacer;
 
       // factor in experience before recalculating the threads

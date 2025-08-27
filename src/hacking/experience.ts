@@ -6,7 +6,11 @@ import { isPrepped, prep } from '@/hacking/lib/util';
 
 export async function main(ns: NS): Promise<void> {
   ns.disableLog('ALL');
-  const tn = ns.args[0] as string | undefined;
+
+  const {
+    _: [tn],
+    stock,
+  } = ns.flags([['stock', false]]) as { _: string[]; stock: boolean };
   if (tn === undefined) {
     ns.tprint(`usage: run ${ns.getScriptName()} <target>`);
     ns.exit();
@@ -19,7 +23,7 @@ export async function main(ns: NS): Promise<void> {
     ns.tprint(`Invalid target: ${tn}. No root.`);
     ns.exit();
   }
-  if (!isPrepped(ns, tn)) await prep(ns, ram, tn);
+  if (!isPrepped(ns, tn)) await prep(ns, ram, tn, stock ? 'g' : 'x');
 
   while (true) {
     // make sure all servers have the executable scripts
@@ -35,9 +39,9 @@ export async function main(ns: NS): Promise<void> {
       const pid = ns.exec(
         '/hacking/workers/tGrow.js',
         server,
-        threads,
+        { threads, temporary: true },
         ns.pid,
-        JSON.stringify({ type: 'exp', target: tn, report: true, threads, server }),
+        JSON.stringify({ type: 'exp', target: tn, report: true, threads, server, stock }),
       );
       if (pid === 0) throw 'Failed to start job.';
       const port = ns.getPortHandle(pid);
