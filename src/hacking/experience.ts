@@ -3,11 +3,14 @@ import { Expediter } from '@/hacking/lib/Expediter';
 import { getServers } from '@/lib/utils';
 import { copyScripts } from '@/hacking/lib/Job';
 import { isPrepped, prep } from '@/hacking/lib/util';
+import { STOCK_MAP } from '../data/stock-map';
+
+type STOCK_ORG = keyof typeof STOCK_MAP;
 
 export async function main(ns: NS): Promise<void> {
   ns.disableLog('ALL');
 
-  const { stock } = ns.flags([['stock', false]]) as { stock: boolean };
+  const { stock } = ns.flags([['stock', 0]]) as { stock: number };
   const ram = new Expediter(ns);
   const dataPort = ns.getPortHandle(ns.pid);
   let fired = 0;
@@ -30,7 +33,9 @@ export async function main(ns: NS): Promise<void> {
   }
   const tn = so.hostname;
 
-  if (!isPrepped(ns, tn)) await prep(ns, ram, tn, stock ? 'g' : 'x');
+  if (!isPrepped(ns, tn)) await prep(ns, ram, tn);
+
+  const stockPort = stock !== 0 ? ns.getPortHandle(stock) : undefined;
 
   while (true) {
     // make sure all servers have the executable scripts
@@ -38,6 +43,16 @@ export async function main(ns: NS): Promise<void> {
       .filter((s) => ns.getServer(s).hasAdminRights)
       .forEach((s) => copyScripts(ns, s));
     ram.update();
+
+    // do stock stuff if needed
+    let stockManipulate: 'g' | 'x' = 'x';
+    if (stockPort !== undefined && !stockPort.empty() && tn in STOCK_MAP) {
+      const stockData: Record<string, boolean> = JSON.parse(stockPort.peek());
+      const targetSym = STOCK_MAP[tn as STOCK_ORG];
+      if (stockData[targetSym] !== undefined) {
+        stockManipulate = stockData[targetSym] ? 'g' : 'x';
+      }
+    }
 
     if (ram.largest < 1.75) throw 'Nowhere on the network to send jobs.';
     while (ram.largest >= 1.75) {
@@ -48,7 +63,7 @@ export async function main(ns: NS): Promise<void> {
         server,
         { threads, temporary: true },
         ns.pid,
-        JSON.stringify({ type: 'exp', target: tn, report: true, threads, server, stock }),
+        JSON.stringify({ type: 'exp', target: tn, report: true, threads, server, stock: stockManipulate === 'g' }),
       );
       if (pid === 0) throw 'Failed to start job.';
       const port = ns.getPortHandle(pid);

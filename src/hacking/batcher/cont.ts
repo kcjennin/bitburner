@@ -1,10 +1,13 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
-import { NS, Player, Server } from '@ns';
-import { ServerPool } from '@/hacking/lib/ServerPool';
+import { NetscriptPort, NS, Player, Server } from '@ns';
+import { ServerPool } from '../lib/ServerPool';
 import { collectJob, JOB_RAM, submitJob } from '../lib/HGWJob';
-import { getServers, isPrepped } from '@/lib/utils';
+import { getServers, isPrepped } from '../../lib/utils';
 import { prep } from '../lib/util';
 import { Expediter } from '../lib/Expediter';
+import { STOCK_MAP } from '../../data/stock-map';
+
+type STOCK_ORG = keyof typeof STOCK_MAP;
 
 interface Batch<T> {
   h: T;
@@ -144,8 +147,8 @@ export async function main(ns: NS): Promise<void> {
     ['exclude', ''],
     ['target', ''],
     ['spacer', 5],
-    ['stock', 'x'],
-  ]) as { debug: boolean; exclude: string; target: string; spacer: number; stock: 'g' | 'h' | 'x' };
+    ['stock', 0],
+  ]) as { debug: boolean; exclude: string; target: string; spacer: number; stock: number };
   const excludes = exclude.split(',');
 
   ns.disableLog('ALL');
@@ -156,6 +159,8 @@ export async function main(ns: NS): Promise<void> {
   ns.clearLog();
   ns.clearPort(ns.pid);
   ns.ui.openTail();
+
+  const stockPort: NetscriptPort | undefined = stock !== 0 ? ns.getPortHandle(stock) : undefined;
 
   let targetInfo;
   if (cliTarget !== '') {
@@ -199,7 +204,8 @@ export async function main(ns: NS): Promise<void> {
   let running = 0,
     endTime = Date.now() + times.w1 + 200,
     completed = 0,
-    cycleTime = 0;
+    cycleTime = 0,
+    stockManipulate: 'g' | 'h' | 'x' = 'x';
   if (!debug) {
     const timer = setInterval(() => {
       ns.clearLog();
@@ -207,6 +213,7 @@ export async function main(ns: NS): Promise<void> {
       ns.print(`Income: $${ns.formatNumber(rate * 1000)}/s`);
       ns.print(`Depth:  ${depth} / ${Math.floor(times.w1 / (spacer * 4))}`);
       ns.print(`        ${running} | ${completed} | ${ns.formatNumber(cycleTime, 3, 1000, true)} ms`);
+      ns.print(`Stock:  ${stockManipulate}`);
     }, 1000);
     ns.atExit(() => clearInterval(timer));
   }
@@ -248,6 +255,15 @@ export async function main(ns: NS): Promise<void> {
     );
     let hacking = po.skills.hacking;
 
+    // do stock stuff if needed
+    if (stockPort !== undefined && !stockPort.empty() && target in STOCK_MAP) {
+      const stockData: Record<string, boolean> = JSON.parse(stockPort.peek());
+      const targetSym = STOCK_MAP[target as STOCK_ORG];
+      if (stockData[targetSym] !== undefined) {
+        stockManipulate = stockData[targetSym] ? 'g' : 'h';
+      }
+    }
+
     while (running < depth) {
       const hosts = {
         h: pool.reserve(threads.h * JOB_RAM.h),
@@ -260,10 +276,12 @@ export async function main(ns: NS): Promise<void> {
       // can't finish faster than a w1
       if (endTime < Date.now() + times.w1) endTime = Date.now() + times.w1;
       endTime +=
-        (await submitJob(ns, hosts.h!, threads.h, 'h', target, ns.pid, times.h, endTime, stock === 'h')) + spacer;
+        (await submitJob(ns, hosts.h!, threads.h, 'h', target, ns.pid, times.h, endTime, stockManipulate === 'h')) +
+        spacer;
       endTime += (await submitJob(ns, hosts.w1!, threads.w1, 'w1', target, ns.pid, times.w1, endTime)) + spacer;
       endTime +=
-        (await submitJob(ns, hosts.g!, threads.g, 'g', target, ns.pid, times.g, endTime, stock === 'g')) + spacer;
+        (await submitJob(ns, hosts.g!, threads.g, 'g', target, ns.pid, times.g, endTime, stockManipulate === 'g')) +
+        spacer;
       endTime += (await submitJob(ns, hosts.w2!, threads.w2, 'w2', target, ns.pid, times.w2, endTime)) + spacer;
 
       // factor in experience before recalculating the threads

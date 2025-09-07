@@ -1,107 +1,145 @@
-import { FactionName, NS } from '@ns';
+import { Multipliers, NS } from '@ns';
 
-interface Augment {
-  name: string;
-  factions: FactionName[];
-  cost: number;
-  rep: number;
-  stats: {
-    hacking_chance: number;
-    hacking_speed: number;
-    hacking_money: number;
-    hacking_grow: number;
-    hacking: number;
-    hacking_exp: number;
-    strength: number;
-    strength_exp: number;
-    defense: number;
-    defense_exp: number;
-    dexterity: number;
-    dexterity_exp: number;
-    agility: number;
-    agility_exp: number;
-    charisma: number;
-    charisma_exp: number;
-    hacknet_node_money: number;
-    hacknet_node_purchase_cost: number;
-    hacknet_node_ram_cost: number;
-    hacknet_node_core_cost: number;
-    hacknet_node_level_cost: number;
-    company_rep: number;
-    faction_rep: number;
-    work_money: number;
-    crime_success: number;
-    crime_money: number;
-    bladeburner_max_stamina: number;
-    bladeburner_stamina_gain: number;
-    bladeburner_analysis: number;
-    bladeburner_success_chance: number;
-  };
-  prereqs: string[];
+type Multiplier = keyof Multipliers;
+
+interface Target {
+  rep: Multiplier[];
+  hack: Multiplier[];
+  combat: Multiplier[];
+  charisma: Multiplier[];
+  crime: Multiplier[];
+  bladeburner: Multiplier[];
+}
+
+const TARGET: Target = {
+  rep: ['company_rep', 'faction_rep'],
+  hack: ['hacking_chance', 'hacking_speed', 'hacking_money', 'hacking_grow', 'hacking', 'hacking_exp'],
+  combat: [
+    'strength',
+    'strength_exp',
+    'defense',
+    'defense_exp',
+    'dexterity',
+    'dexterity_exp',
+    'agility',
+    'agility_exp',
+  ],
+  charisma: ['charisma', 'charisma_exp'],
+  crime: ['crime_success', 'crime_money'],
+  bladeburner: [
+    'bladeburner_max_stamina',
+    'bladeburner_stamina_gain',
+    'bladeburner_analysis',
+    'bladeburner_success_chance',
+  ],
+} as const;
+
+type TargetType = keyof Target;
+
+function onTarget(ns: NS, augment: string, targets: TargetType[]) {
+  const stats = ns.singularity.getAugmentationStats(augment);
+  const multTargets = targets.flatMap((t) => TARGET[t]);
+  return multTargets.some((t) => stats[t] > 1);
 }
 
 export async function main(ns: NS): Promise<void> {
-  const { money, names, buyPath } = ns.flags([
-    ['money', ns.getServerMoneyAvailable('home')],
-    ['names', false],
-    ['buyPath', false],
-  ]) as { money: number; names: boolean; buyPath: boolean };
+  const {
+    m: cliMoney,
+    r: cliRep,
+    n,
+    _: skillTargets,
+  } = ns.flags([
+    ['m', -1],
+    ['r', -1],
+    ['n', false],
+  ]) as { m: number; r: number; n: boolean; _: TargetType[] };
+  if (!skillTargets.includes('rep')) skillTargets.push('rep');
 
-  const augments = JSON.parse(ns.read('/data/augments.json')) as Augment[];
+  const po = ns.getPlayer();
+  let money = cliMoney > 0 ? cliMoney : po.money;
   const owned = ns.singularity.getOwnedAugmentations(true);
 
-  const wanted = augments
-    .filter((a) => {
-      a.cost *= ns.getBitNodeMultipliers().AugmentationMoneyCost;
-      a.rep *= ns.getBitNodeMultipliers().AugmentationRepCost;
-      return (
-        (a.stats.hacking > 1 ||
-          a.stats.hacking_chance > 1 ||
-          a.stats.hacking_exp > 1 ||
-          a.stats.hacking_grow > 1 ||
-          a.stats.hacking_money > 1 ||
-          a.stats.hacking_speed > 1 ||
-          a.stats.faction_rep > 1 ||
-          a.name == 'CashRoot Starter Kit') &&
-        a.cost <= money &&
-        !owned.includes(a.name) &&
-        a.prereqs.every((pr) => owned.includes(pr))
-      );
-    })
-    .sort((a, b) => a.cost - b.cost);
+  const available: { name: string; faction: string; rep: number; cost: number; prereqs: string[] }[] = [];
+  for (const faction of po.factions) {
+    const totalRep = cliRep > 0 ? cliRep : ns.singularity.getFactionRep(faction);
+    const factionAugs = ns.singularity
+      .getAugmentationsFromFaction(faction)
+      .filter(
+        (a) =>
+          a !== 'NeuroFlux Governor' &&
+          !owned.includes(a) &&
+          !available.find(({ name }) => name === a) &&
+          onTarget(ns, a, skillTargets),
+      )
+      .map((a) => ({
+        name: a,
+        faction,
+        rep: ns.singularity.getAugmentationRepReq(a),
+        cost: ns.singularity.getAugmentationPrice(a),
+        prereqs: ns.singularity.getAugmentationPrereq(a),
+      }))
+      .filter(({ rep, cost }) => rep <= totalRep && cost <= money);
+    available.push(...factionAugs);
+  }
+  available.sort((a, b) => b.cost - a.cost);
 
-  if (buyPath) {
-    let totalCost = Infinity,
-      ignore = 0;
-    while (totalCost > money) {
-      totalCost = 0;
-      for (let i = wanted.length - ignore - 1, mult = 1; i >= 0; --i) {
-        totalCost += wanted[i].cost * mult;
-        mult *= 2;
+  ns.tprint(`${available.length} augments available.`);
+
+  const moneyBefore = money;
+  const output = ['\nPurchased:'];
+
+  let madePurchase;
+  const neededPrereqs: string[] = [];
+  do {
+    madePurchase = false;
+    for (let idx = 0; idx < available.length; ++idx) {
+      const { name, faction, cost, prereqs } = available[idx];
+      if (owned.includes(name)) continue;
+      // skip for now if we don't have the prereqs
+      if (prereqs.some((p) => !owned.includes(p))) {
+        neededPrereqs.push(...prereqs.filter((p) => !owned.includes(p) && !neededPrereqs.includes(p)));
+        continue;
+      }
+      if (cost > money) continue;
+
+      if (!n) ns.singularity.purchaseAugmentation(faction, name);
+      madePurchase = true;
+      owned.push(name);
+      output.push(`  - ${name}`);
+      money -= cost;
+      for (let jdx = idx + 1; jdx < available.length; ++jdx) {
+        available[jdx].cost *= 1.9;
       }
 
-      ignore += 1;
-      if (ignore === wanted.length) {
-        ns.tprint(`Can't purchase any augments.`);
-        ns.exit();
+      // if this was one of the prereqs we needed, break out and start from the top
+      const npIdx = neededPrereqs.indexOf(name);
+      if (npIdx > -1) {
+        neededPrereqs.splice(npIdx, 1);
+        break;
       }
     }
+  } while (madePurchase);
 
-    ns.tprint(`Total cost of augments: $${ns.formatNumber(totalCost)}`);
-    wanted
-      .slice(0, -ignore)
-      .reverse()
-      .forEach((a) => {
-        ns.tprint(`|-- ${a.name}`);
-      });
-  } else {
-    wanted.forEach((a) => {
-      ns.tprint(`${a.name}`);
-      if (!names) {
-        ns.tprint(`|-- ${a.factions.join(', ')}`);
-        ns.tprint(`|-- $${ns.formatNumber(a.cost)}`);
-        ns.tprint(`|-- ${ns.formatNumber(a.rep)} reputation`);
+  // too complicated to predict NFG purchases
+  if (!n) {
+    const mostRep = po.factions.sort((a, b) => ns.singularity.getFactionRep(a) - ns.singularity.getFactionRep(b)).at(0);
+    if (mostRep !== undefined) {
+      let nfCount = 0;
+      while (true) {
+        const cost = ns.singularity.getAugmentationPrice('NeuroFlux Governor');
+        ns.tprint(cost);
+        if (cost > money) break;
+
+        if (!n) ns.singularity.purchaseAugmentation(mostRep, 'NeuroFlux Governor');
+        money -= cost;
+        nfCount++;
+        await ns.sleep(0);
       }
-    });
+
+      if (nfCount > 0) output.push(`  - NeuroFlux Governor (${nfCount})`);
+    }
   }
+
+  output.push(`Spent $${ns.formatNumber(moneyBefore - (n ? money : ns.getServerMoneyAvailable('home')))}.`);
+  ns.tprint(output.join('\n'));
 }

@@ -1,11 +1,11 @@
 import { FactionWorkType, NS } from '@ns';
 
-const EXCLUDES: string[] = ['NiteSec', 'The Black Hand', 'Bitrunners'];
 const PERIOD = 1000;
 // in order of priority
-const WORK_LIST = ['security', 'field', 'hacking'];
+const WORK_LIST = ['hacking', 'field', 'security'];
 
 export async function main(ns: NS): Promise<void> {
+  const { noMax, _: excludes } = ns.flags([['noMax', false]]) as { noMax: boolean; _: string[] };
   ns.disableLog('ALL');
   const task = { faction: 'none', action: 'none' };
   const lastRep = { name: 'none', rep: 0 };
@@ -15,11 +15,11 @@ export async function main(ns: NS): Promise<void> {
     const focus = ns.singularity.isFocused;
     const factions = ns
       .getPlayer()
-      .factions.filter((f) => !EXCLUDES.includes(f))
+      .factions.filter((f) => !excludes.includes(f))
       .map((f) => {
         const augs = ns.singularity.getAugmentationsFromFaction(f).filter((aug) => !ownedAugments.includes(aug));
         const maxRep = Math.min(
-          475000,
+          noMax ? Infinity : 475000,
           augs.reduce((max, aug) => Math.max(max, ns.singularity.getAugmentationRepReq(aug)), 0),
         );
         return { name: f, maxRep, curRep: ns.singularity.getFactionRep(f) };
@@ -49,7 +49,7 @@ export async function main(ns: NS): Promise<void> {
       // if we can't do any work for the faction just ignore them
       if (!result) {
         ns.toast(`Excluding ${name} from faction work.`);
-        EXCLUDES.push(name);
+        excludes.push(name);
         continue;
       }
 

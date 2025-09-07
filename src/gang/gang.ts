@@ -5,7 +5,10 @@ const BONUS_WARFARE_CHANCE = 0.4;
 const RESPECT_GOAL = 2e6;
 
 export async function main(ns: NS): Promise<void> {
-  const { noGui } = ns.flags([['noGui', false]]) as { noGui: boolean };
+  const { noGui, respectOnly } = ns.flags([
+    ['noGui', false],
+    ['respectOnly', false],
+  ]) as { noGui: boolean; respectOnly: boolean };
   ns.disableLog('ALL');
   if (!noGui) ns.ui.openTail();
 
@@ -19,7 +22,7 @@ export async function main(ns: NS): Promise<void> {
     ns.gang.recruitMember(Math.random().toString().slice(2, 4));
     const members = ns.gang.getMemberNames();
 
-    const focusMoney = gi.respect > RESPECT_GOAL;
+    const focusMoney = !respectOnly && gi.respect > RESPECT_GOAL;
 
     // ascend
     members.forEach((m) => ascendMember(ns, m, members.length));

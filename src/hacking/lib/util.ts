@@ -9,7 +9,7 @@ export function isPrepped(ns: NS, server: string): boolean {
   return (so.hackDifficulty ?? 0) === (so.minDifficulty ?? 0) && (so.moneyAvailable ?? 0) === (so.moneyMax ?? 0);
 }
 
-export async function prep(ns: NS, ram: Expediter, target: string, stock?: 'h' | 'g' | 'x') {
+export async function prep(ns: NS, ram: Expediter, target: string) {
   const dataPort = ns.getPortHandle(ns.pid);
 
   while (!isPrepped(ns, target)) {
@@ -33,7 +33,7 @@ export async function prep(ns: NS, ram: Expediter, target: string, stock?: 'h' |
     const neededThreads = w1Threads + gThreads + w2Threads;
 
     let jobs = 0;
-    const startJob = async (tThreads: number, script: string, end = 0, time = 0, stock = false) => {
+    const startJob = async (tThreads: number, script: string, end = 0, time = 0) => {
       const threads = Math.min(tThreads, Math.floor(ram.largest / 1.75));
 
       const server = ram.reserve(threads * 1.75);
@@ -44,7 +44,7 @@ export async function prep(ns: NS, ram: Expediter, target: string, stock?: 'h' |
         server,
         { threads, temporary: true },
         ns.pid,
-        JSON.stringify({ type: 'prep', target, report: true, threads, server, end, time, stock }),
+        JSON.stringify({ type: 'prep', target, report: true, threads, server, end, time }),
       );
       if (pid === 0) {
         ns.print(`ERROR: Failed to submit prep job.`);
@@ -68,7 +68,7 @@ export async function prep(ns: NS, ram: Expediter, target: string, stock?: 'h' |
     }
 
     while (gThreads > 0 && ram.largest >= 1.75) {
-      gThreads -= await startJob(gThreads, '/hacking/workers/tGrow.js', Date.now() + wTime + 50, gTime, stock === 'g');
+      gThreads -= await startJob(gThreads, '/hacking/workers/tGrow.js', Date.now() + wTime + 50, gTime);
     }
 
     while (w2Threads > 0 && ram.largest >= 1.75) {

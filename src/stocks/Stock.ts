@@ -2,14 +2,14 @@ import { NS } from '@ns';
 
 type TransactionType = 'buyStock' | 'buyShort' | 'sellStock' | 'sellShort';
 
-export interface BuyRejection<T> {
-  blackedOut: T;
-  maxxed: T;
+export interface BuyReasons<T> {
+  notBlackedOut: T;
+  notMaxxed: T;
   goodReturn: T;
   validType: T;
-  tixBlackedOut: T;
-  tixRecentInversion: T;
-  tixLowProbability: T;
+  tixNotBlackedOut: T;
+  tixNotRecentInversion: T;
+  tixHighProbability: T;
 }
 
 export class Stock {
@@ -64,6 +64,9 @@ export class Stock {
   }
 
   refresh(): boolean {
+    this.ask = this.ns.stock.getAskPrice(this.sym);
+    this.bid = this.ns.stock.getBidPrice(this.sym);
+
     if (!this.has4s) {
       this.history.unshift((this.ask + this.bid) / 2);
       if (this.history.length > Stock.HISTORY_SIZE) this.history.pop();
@@ -77,8 +80,6 @@ export class Stock {
       this.lastInversion++;
     }
 
-    this.ask = this.ns.stock.getAskPrice(this.sym);
-    this.bid = this.ns.stock.getBidPrice(this.sym);
     this.forecastShadow = this.forecast;
     [this.forecast, this.stdev] = this.getForecast();
     [this.long, this.longPrice, this.short, this.shortPrice] = this.ns.stock.getPosition(this.sym);
@@ -172,33 +173,33 @@ export class Stock {
     );
   }
 
-  shouldBuy(ticksToCycle: number): [boolean, BuyRejection<boolean>] {
+  shouldBuy(ticksToCycle: number): [boolean, BuyReasons<boolean>] {
     const threshold = this.has4s ? Stock.BUY_THRESHOLD : Stock.TIX_BUY_THRESHOLD;
 
     const reasons = {
-      blackedOut: this.blackoutWindow >= ticksToCycle,
-      maxxed: this.shares === this.maxShares,
-      goodReturn: this.absoluteReturn > threshold,
+      notBlackedOut: this.blackoutWindow < ticksToCycle,
+      notMaxxed: this.shares < this.maxShares,
+      goodReturn: this.absoluteReturn >= threshold,
       validType: Stock.ENABLE_SHORTS || this.bullish,
-      tixBlackedOut: false,
-      tixRecentInversion: false,
-      tixLowProbability: false,
+      tixNotBlackedOut: true,
+      tixNotRecentInversion: true,
+      tixHighProbability: true,
     };
 
     if (!this.has4s) {
-      reasons.tixBlackedOut = Math.max(Stock.MIN_HOLD, Stock.BLACKOUT_WINDOW) >= ticksToCycle;
-      reasons.tixRecentInversion = this.lastInversion < Stock.INVERSION_WINDOW;
-      reasons.tixLowProbability = Math.abs(this.forecast - 0.5) < Stock.TIX_BUY_THRESHOLD_PROB;
+      reasons.tixNotBlackedOut = Math.max(Stock.MIN_HOLD, Stock.BLACKOUT_WINDOW) < ticksToCycle;
+      reasons.tixNotRecentInversion = this.lastInversion >= Stock.INVERSION_WINDOW;
+      reasons.tixHighProbability = Math.abs(this.forecast - 0.5) > Stock.TIX_BUY_THRESHOLD_PROB;
     }
 
     const decision =
-      !reasons.blackedOut &&
-      !reasons.maxxed &&
+      reasons.notBlackedOut &&
+      reasons.notMaxxed &&
       reasons.goodReturn &&
       reasons.validType &&
-      !reasons.tixBlackedOut &&
-      !reasons.tixRecentInversion &&
-      !reasons.tixLowProbability;
+      reasons.tixNotBlackedOut &&
+      reasons.tixNotRecentInversion &&
+      reasons.tixHighProbability;
 
     return [decision, reasons];
   }
@@ -236,9 +237,14 @@ export class Stock {
 
   async transaction(action: TransactionType, shares: number): Promise<number> {
     const jobPid = this.ns.run(`/stocks/${action}.js`, 1, this.sym, shares);
+    if (jobPid === 0) throw 'Failed to make transaction. Not enough RAM?';
     const jobPort = this.ns.getPortHandle(jobPid);
 
     if (jobPort.empty()) await jobPort.nextWrite();
+
+    // update the position after the transation
+    [this.long, this.longPrice, this.short, this.shortPrice] = this.ns.stock.getPosition(this.sym);
+
     return jobPort.read();
   }
 
@@ -246,7 +252,7 @@ export class Stock {
     // get the number of recorded price increases in the given history and scale to [0, 1]
     if (hist.length < 2) return 0.5;
     return (
-      hist.reduce((upticks, price, idx) => (idx === 0 ? 0 : hist[idx - 1] > price ? upticks + 1 : upticks)) /
+      hist.reduce((upticks, price, idx) => (idx === 0 ? 0 : hist[idx - 1] > price ? upticks + 1 : upticks), 0) /
       (hist.length - 1)
     );
   }

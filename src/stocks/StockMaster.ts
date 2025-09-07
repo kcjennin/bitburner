@@ -1,5 +1,5 @@
-import { NS } from '@ns';
-import { Stock, BuyRejection } from './Stock';
+import { NetscriptPort, NS } from '@ns';
+import { Stock, BuyReasons } from './Stock';
 
 export class StockMaster {
   private static COMMISSION = 100e3;
@@ -17,12 +17,14 @@ export class StockMaster {
   private static TIX_MIN_HISTORY = 21;
 
   has4s: boolean;
+  port: NetscriptPort;
 
   constructor(private readonly ns: NS, private hudElement?: HTMLElement) {
     if (!ns.stock.hasTIXAPIAccess()) {
       throw 'TIX API is required to run StockMaster';
     }
     this.has4s = ns.stock.has4SDataTIXAPI();
+    this.port = ns.getPortHandle(ns.pid);
   }
 
   async smRun(): Promise<never> {
@@ -34,10 +36,10 @@ export class StockMaster {
     while (true) {
       await this.ns.stock.nextUpdate();
       cycleTick = (cycleTick + 1) % StockMaster.MARKET_CYCLE;
-      this.ns.print(`Cycle: ${cycleTick}`);
+      this.ns.print(`=== Cycle ${cycleTick} ===`);
 
       // update all the stocks and collect their total value
-      const heldStocks: Stock[] = [];
+      let heldStocks: Stock[] = [];
       let inversions = 0;
       const holdings = stocks.reduce((total, stock) => {
         if (stock.refresh()) inversions++;
@@ -47,20 +49,24 @@ export class StockMaster {
 
       const money = this.ns.getServerMoneyAvailable('home');
       const corpus = holdings + money;
-      const maxHoldings = (1 - StockMaster.KEEP_CASH) * corpus;
+      const maxHoldings = (1 - (this.has4s ? 0 : StockMaster.KEEP_CASH)) * corpus;
 
-      // update the HUD
-      if (this.hudElement) {
-        if (heldStocks.length > 0) {
-          const liquidationValue = heldStocks.reduce(
-            (sum, stock) => sum - (stock.owned ? StockMaster.COMMISSION : 0) + stock.value,
-            0,
-          );
-          this.hudElement.innerText = '$' + this.ns.formatNumber(liquidationValue);
-        } else {
-          this.hudElement.innerText = '$0.000';
+      const updateHUD = (doUpdate: boolean) => {
+        if (this.hudElement) {
+          if (doUpdate) heldStocks = stocks.filter((stock) => stock.owned);
+          if (heldStocks.length > 0) {
+            const liquidationValue = heldStocks.reduce(
+              (sum, stock) => sum - (stock.owned ? StockMaster.COMMISSION : 0) + stock.value,
+              0,
+            );
+            this.hudElement.innerText = '$' + this.ns.formatNumber(liquidationValue);
+          } else {
+            this.hudElement.innerText = '$0.000';
+          }
         }
-      }
+      };
+
+      updateHUD(false);
 
       // if our net worth is great enough to get the 4S data, do that
       if (!this.has4s && corpus * StockMaster.PURCHASE_4S_EXPENDITURE > StockMaster.COST_4S) {
@@ -68,6 +74,7 @@ export class StockMaster {
         for (const stock of heldStocks) {
           await stock.sellAll();
         }
+        if (this.hudElement) this.hudElement.innerText = '$0.000';
 
         this.has4s = await buy4s(this.ns);
         this.ns.print('Bought 4S Data API Access.');
@@ -79,6 +86,10 @@ export class StockMaster {
         this.ns.print(`Building history... (${stocks[0].history.length} / ${StockMaster.TIX_MIN_HISTORY})`);
         continue;
       }
+
+      // add the forecast data to the data port for other programs to use
+      if (!this.port.empty()) this.port.clear();
+      this.port.write(JSON.stringify(Object.fromEntries(stocks.map((stock) => [stock.sym, stock.bullish]))));
 
       if (inversions >= StockMaster.INVERSION_AGREEMENT_THRESHOLD) {
         cycleTick = this.has4s ? 0 : Stock.INVERSION_WINDOW;
@@ -95,29 +106,32 @@ export class StockMaster {
       }
 
       // don't buy after a sale
-      if (didSale) continue;
+      if (didSale) {
+        updateHUD(true);
+        continue;
+      }
 
       // try to buy appropriate stocks
       if (money / corpus > StockMaster.RATIO_LIQUID) {
         let moneyAvailable = Math.min(money - StockMaster.RESERVE, maxHoldings - holdings);
         // GET ESTIMATED CYCLE TICK
-        const cycleTick = 0;
         const ticksToCycle = StockMaster.MARKET_CYCLE - cycleTick;
 
-        const allReasons: BuyRejection<number> = {
-          blackedOut: 0,
+        const allReasons: BuyReasons<number> = {
+          notBlackedOut: 0,
           goodReturn: 0,
-          maxxed: 0,
+          notMaxxed: 0,
           validType: 0,
-          tixBlackedOut: 0,
-          tixRecentInversion: 0,
-          tixLowProbability: 0,
+          tixNotBlackedOut: 0,
+          tixNotRecentInversion: 0,
+          tixHighProbability: 0,
         };
 
         for (const stock of stocks.sort(StockMaster.purchaseOrder).filter((stock) => {
           const [decision, stockReasons] = stock.shouldBuy(ticksToCycle);
 
-          for (const [reason, result] of Object.entries(stockReasons) as [keyof BuyRejection<boolean>, boolean][]) {
+          // if the reason disqualified the stock log it
+          for (const [reason, result] of Object.entries(stockReasons) as [keyof BuyReasons<boolean>, boolean][]) {
             if (!result) allReasons[reason] += 1;
           }
 
@@ -125,7 +139,10 @@ export class StockMaster {
         })) {
           if (moneyAvailable <= 0) break;
 
-          const budget = Math.min(moneyAvailable, maxHoldings * StockMaster.DIVERSIFICATION - stock.value);
+          const budget = Math.min(
+            moneyAvailable,
+            maxHoldings * (this.has4s ? 1 : StockMaster.DIVERSIFICATION) - stock.value,
+          );
           const price = stock.bullish ? stock.ask : stock.bid;
           const canPurchaseShares = Math.floor((budget - StockMaster.COMMISSION) / price);
           const shares = Math.min(stock.maxShares - stock.shares, canPurchaseShares);
@@ -148,10 +165,12 @@ export class StockMaster {
           }
         }
 
-        this.ns.print(allReasons);
+        this.ns.print(JSON.stringify(allReasons, undefined, '  '));
       } else {
         this.ns.print(`Not enough money.`);
       }
+
+      updateHUD(true);
     }
   }
 
@@ -161,7 +180,7 @@ export class StockMaster {
 }
 
 async function buy4s(ns: NS): Promise<boolean> {
-  const jobPid = ns.run(`/stocks/buy4s.ts`);
+  const jobPid = ns.run(`/stocks/buy4s.js`);
   const jobPort = ns.getPortHandle(jobPid);
 
   if (jobPort.empty()) await jobPort.nextWrite();
