@@ -70,12 +70,6 @@ export async function main(ns: NS): Promise<void> {
 
       const p = ns.sleeve.getSleeve(sleeveNumber);
       if (p.city !== 'Sector-12') throw 'Must be in Sector-12';
-      if (p.shock > 96) {
-        // if the sleeve is shocked, wait 10 seconds then try again
-        ns.sleeve.setToShockRecovery(sleeveNumber);
-        setNext(10000, 'Shock Recovery');
-        continue;
-      }
       const {
         skills: { hacking, strength, defense, dexterity, agility, charisma },
       } = p;

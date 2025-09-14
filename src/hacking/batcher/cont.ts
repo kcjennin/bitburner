@@ -2,10 +2,11 @@
 import { NetscriptPort, NS, Player, Server } from '@ns';
 import { ServerPool } from '../lib/ServerPool';
 import { collectJob, JOB_RAM, submitJob } from '../lib/HGWJob';
-import { getServers, isPrepped } from '../../lib/utils';
+import { isPrepped } from '../../lib/utils';
 import { prep } from '../lib/util';
 import { Expediter } from '../lib/Expediter';
 import { STOCK_MAP } from '../../data/stock-map';
+import { BitNodeMultiplersCache, getCacheData, ServersCache } from '@/lib/Cache';
 
 type STOCK_ORG = keyof typeof STOCK_MAP;
 
@@ -129,10 +130,10 @@ function calculateBatch(
 }
 
 function updatePlayerHacking(ns: NS, po: Player, exp: number) {
-  po.exp.hacking += Math.round(exp * ns.getBitNodeMultipliers().HackExpGain);
+  po.exp.hacking += Math.round(exp * getCacheData(ns, BitNodeMultiplersCache).HackExpGain);
 
   const newSkill = ns.formulas.skills.calculateSkill(po.exp.hacking, po.mults.hacking);
-  po.skills.hacking = Math.round(newSkill * ns.getBitNodeMultipliers().HackingLevelMultiplier);
+  po.skills.hacking = Math.round(newSkill * getCacheData(ns, BitNodeMultiplersCache).HackingLevelMultiplier);
 }
 
 export async function main(ns: NS): Promise<void> {
@@ -170,8 +171,7 @@ export async function main(ns: NS): Promise<void> {
     // get the batch information for all servers
     const filtered: BatchInfo[] = [];
     const po = ns.getPlayer();
-    const bestServers = getServers(ns)
-      .map(ns.getServer)
+    const bestServers = getCacheData(ns, ServersCache)
       .filter(
         (s) =>
           !excludes.includes(s.hostname) &&

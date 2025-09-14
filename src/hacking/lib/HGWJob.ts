@@ -42,9 +42,6 @@ export async function submitJob(
   end?: number,
   stock?: boolean,
 ): Promise<number> {
-  ns.scp(JOB_SCRIPTS[type], host, 'home');
-  if (DEBUG) ns.write('/data/endTimes.txt', ns.formatNumber(end ?? 0, 0), 'a');
-
   const wi: WorkerCommand = {
     type,
     target,

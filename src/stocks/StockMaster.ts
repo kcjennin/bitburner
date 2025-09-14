@@ -19,7 +19,7 @@ export class StockMaster {
   has4s: boolean;
   port: NetscriptPort;
 
-  constructor(private readonly ns: NS, private hudElement?: HTMLElement) {
+  constructor(private readonly ns: NS, private hudElement?: { stock: HTMLElement; total: HTMLElement }) {
     if (!ns.stock.hasTIXAPIAccess()) {
       throw 'TIX API is required to run StockMaster';
     }
@@ -59,9 +59,11 @@ export class StockMaster {
               (sum, stock) => sum - (stock.owned ? StockMaster.COMMISSION : 0) + stock.value,
               0,
             );
-            this.hudElement.innerText = '$' + this.ns.formatNumber(liquidationValue);
+            this.hudElement.stock.innerText = '$' + this.ns.formatNumber(liquidationValue);
+            this.hudElement.total.innerText = '$' + this.ns.formatNumber(money + liquidationValue);
           } else {
-            this.hudElement.innerText = '$0.000';
+            this.hudElement.stock.innerText = '$0.000';
+            this.hudElement.total.innerText = '$' + this.ns.formatNumber(money);
           }
         }
       };
@@ -74,7 +76,10 @@ export class StockMaster {
         for (const stock of heldStocks) {
           await stock.sellAll();
         }
-        if (this.hudElement) this.hudElement.innerText = '$0.000';
+        if (this.hudElement) {
+          this.hudElement.stock.innerText = '$0.000';
+          this.hudElement.total.innerText = '$' + this.ns.formatNumber(this.ns.getServerMoneyAvailable('home'));
+        }
 
         this.has4s = await buy4s(this.ns);
         this.ns.print('Bought 4S Data API Access.');
@@ -111,6 +116,12 @@ export class StockMaster {
         continue;
       }
 
+      const sortedStocks = stocks.sort(StockMaster.purchaseOrder);
+      this.ns.print(Stock.tableHeader());
+      sortedStocks.slice(0, 5).forEach((stock) => {
+        this.ns.print(stock.toTableRow());
+      });
+
       // try to buy appropriate stocks
       if (money / corpus > StockMaster.RATIO_LIQUID) {
         let moneyAvailable = Math.min(money - StockMaster.RESERVE, maxHoldings - holdings);
@@ -127,7 +138,7 @@ export class StockMaster {
           tixHighProbability: 0,
         };
 
-        for (const stock of stocks.sort(StockMaster.purchaseOrder).filter((stock) => {
+        const buyStocks = sortedStocks.filter((stock) => {
           const [decision, stockReasons] = stock.shouldBuy(ticksToCycle);
 
           // if the reason disqualified the stock log it
@@ -136,7 +147,10 @@ export class StockMaster {
           }
 
           return decision;
-        })) {
+        });
+
+        // top stocks display
+        for (const stock of buyStocks) {
           if (moneyAvailable <= 0) break;
 
           const budget = Math.min(
@@ -167,7 +181,7 @@ export class StockMaster {
 
         this.ns.print(JSON.stringify(allReasons, undefined, '  '));
       } else {
-        this.ns.print(`Not enough money.`);
+        /* do nothing */
       }
 
       updateHUD(true);
@@ -175,6 +189,20 @@ export class StockMaster {
   }
 
   private static purchaseOrder(a: Stock, b: Stock): number {
+    const threshold = 5;
+
+    const aLow = a.blackoutWindow < threshold;
+    const bLow = b.blackoutWindow < threshold;
+
+    if (aLow && !bLow) return -1;
+    if (!aLow && bLow) return 1;
+
+    if (aLow && bLow) {
+      // Both under threshold → sort by return
+      return b.absoluteReturn - a.absoluteReturn;
+    }
+
+    // Both >= threshold → sort by window, then return
     return a.blackoutWindow - b.blackoutWindow || b.absoluteReturn - a.absoluteReturn;
   }
 }

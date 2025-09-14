@@ -2,6 +2,8 @@ import { NS } from '@ns';
 import { Stock } from './Stock';
 
 export async function main(ns: NS) {
+  ns.scriptKill('/stocks/manager.js', 'home');
+
   const stocks = ns.stock.getSymbols().map((sym) => {
     const stock = new Stock(ns, sym);
     stock.refresh();

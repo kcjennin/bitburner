@@ -1,8 +1,7 @@
 import { NS } from '@ns';
 import { Expediter } from '@/hacking/lib/Expediter';
-import { copyScripts } from '@/hacking/lib/Job';
 import { Target } from '@/hacking/lib/Target';
-import { getServers } from '@/lib/utils';
+import { getCacheData, ServersCache } from '@/lib/Cache';
 
 export function isPrepped(ns: NS, server: string): boolean {
   const so = ns.getServer(server);
@@ -13,9 +12,7 @@ export async function prep(ns: NS, ram: Expediter, target: string) {
   const dataPort = ns.getPortHandle(ns.pid);
 
   while (!isPrepped(ns, target)) {
-    getServers(ns)
-      .filter((s) => ns.getServer(s).hasAdminRights)
-      .forEach((s) => copyScripts(ns, s));
+    getCacheData(ns, ServersCache).filter((s) => s.hasAdminRights);
     const so = ns.getServer(target);
     const po = ns.getPlayer();
     ram.update();
@@ -117,9 +114,9 @@ export function serverWeight(ns: NS, server: string): number {
 
 export function chooseTarget(ns: NS): string | undefined {
   // get all the servers that are eligible for hacking and sort by a naive weight
-  const servers = getServers(ns)
-    .filter((s) => ns.getServer(s).hasAdminRights && serverWeight(ns, s) > 0)
-    .sort((a, b) => serverWeight(ns, b) - serverWeight(ns, a));
+  const servers = getCacheData(ns, ServersCache)
+    .filter((s) => s.hasAdminRights && serverWeight(ns, s.hostname) > 0)
+    .sort((a, b) => serverWeight(ns, b.hostname) - serverWeight(ns, a.hostname));
 
   const ram = new Expediter(ns);
   // check the actual rate of the top ten (at most) and get the best of those
@@ -127,9 +124,9 @@ export function chooseTarget(ns: NS): string | undefined {
     .slice(0, Math.min(10, servers.length))
     .map((s) => {
       try {
-        return [s, Target.best(ns, ram, s, false).moneyRate] as [string, number];
+        return [s.hostname, Target.best(ns, ram, s.hostname, false).moneyRate] as [string, number];
       } catch {
-        return [s, 0] as [string, number];
+        return [s.hostname, 0] as [string, number];
       }
     })
     .filter(([, sR]) => sR > 0)

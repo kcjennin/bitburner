@@ -1,9 +1,11 @@
+import { getCacheData, ServersCache } from '@/lib/Cache';
 import { NS } from '@ns';
 
 const HOME_RESERVED = 32;
 
 type Block = { hostname: string; max: number; ram: number; reserved: number };
 export class Expediter {
+  private static USE_HACKNET = false;
   largest: number;
   smallest: number;
   total: number;
@@ -15,10 +17,10 @@ export class Expediter {
     this.smallest = Infinity;
     this.total = 0;
     this.servers = new Map<string, Block>();
-    this.blocks = getServers(ns)
-      .filter((s) => ns.getServer(s).hasAdminRights)
+    this.blocks = getCacheData(ns, ServersCache)
+      .filter((s) => s.hasAdminRights && (Expediter.USE_HACKNET || !s.hostname.startsWith('hacknet')))
       .map((s) => {
-        const so = ns.getServer(s);
+        const so = ns.getServer(s.hostname);
         const block = {
           hostname: so.hostname,
           max: so.maxRam,
@@ -61,13 +63,13 @@ export class Expediter {
 
   update(): void {
     let updated = false;
-    getServers(this.ns)
-      .filter((s) => this.ns.getServer(s).hasAdminRights)
+    getCacheData(this.ns, ServersCache)
+      .filter((s) => s.hasAdminRights && (Expediter.USE_HACKNET || !s.hostname.startsWith('hacknet')))
       .forEach((s) => {
-        if (!this.servers.has(s)) {
+        if (!this.servers.has(s.hostname)) {
           // If the block doesn't exist add it
           updated = true;
-          const so = this.ns.getServer(s);
+          const so = this.ns.getServer(s.hostname);
           const block = {
             hostname: so.hostname,
             max: so.maxRam,
@@ -82,8 +84,8 @@ export class Expediter {
           this.blocks.push(block);
         } else {
           // If it does check to make sure the max ram hasn't changed
-          const block = this.servers.get(s) as Block;
-          const so = this.ns.getServer(s);
+          const block = this.servers.get(s.hostname) as Block;
+          const so = this.ns.getServer(s.hostname);
           if (block.max !== so.maxRam) {
             updated = true;
 
@@ -127,15 +129,4 @@ export class Expediter {
     this.total += amount;
     return true;
   }
-}
-
-function getServers(ns: NS): string[] {
-  const z: (t: string) => string[] = (t) => [
-    t,
-    ...ns
-      .scan(t)
-      .slice(t !== 'home' ? 1 : 0)
-      .flatMap(z),
-  ];
-  return z('home');
 }

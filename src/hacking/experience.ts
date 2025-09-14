@@ -1,9 +1,8 @@
 import { NS } from '@ns';
 import { Expediter } from '@/hacking/lib/Expediter';
-import { getServers } from '@/lib/utils';
-import { copyScripts } from '@/hacking/lib/Job';
 import { isPrepped, prep } from '@/hacking/lib/util';
 import { STOCK_MAP } from '../data/stock-map';
+import { getCacheData, ServersCache } from '@/lib/Cache';
 
 type STOCK_ORG = keyof typeof STOCK_MAP;
 
@@ -16,8 +15,7 @@ export async function main(ns: NS): Promise<void> {
   let fired = 0;
 
   const po = ns.getPlayer();
-  const so = getServers(ns)
-    .map(ns.getServer)
+  let so = getCacheData(ns, ServersCache)
     .filter((s) => s.hasAdminRights && po.skills.hacking >= (s.requiredHackingSkill ?? Infinity))
     .sort((a, b) => {
       const [gtA, gtB] = [a, b].map((s) => ns.formulas.hacking.growTime(s, po));
@@ -31,6 +29,7 @@ export async function main(ns: NS): Promise<void> {
   if (so === undefined) {
     throw 'Failed to find a server.';
   }
+  so = ns.getServer(so.hostname);
   const tn = so.hostname;
 
   if (!isPrepped(ns, tn)) await prep(ns, ram, tn);
@@ -39,9 +38,7 @@ export async function main(ns: NS): Promise<void> {
 
   while (true) {
     // make sure all servers have the executable scripts
-    getServers(ns)
-      .filter((s) => ns.getServer(s).hasAdminRights)
-      .forEach((s) => copyScripts(ns, s));
+    getCacheData(ns, ServersCache).filter((s) => s.hasAdminRights);
     ram.update();
 
     // do stock stuff if needed
@@ -58,6 +55,7 @@ export async function main(ns: NS): Promise<void> {
     while (ram.largest >= 1.75) {
       const threads = Math.floor(ram.largest / 1.75);
       const server = ram.reserve(threads * 1.75) as string;
+      if (server.startsWith('hacknet')) throw 'trying to use hacknet';
       const pid = ns.exec(
         '/hacking/workers/tGrow.js',
         server,

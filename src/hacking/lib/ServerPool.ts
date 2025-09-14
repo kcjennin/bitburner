@@ -1,4 +1,4 @@
-import { getServers } from '@/lib/utils';
+import { getCacheData, ServersCache } from '@/lib/Cache';
 import { NS } from '@ns';
 
 export interface ServerInfo {
@@ -9,13 +9,19 @@ export interface ServerInfo {
 }
 
 export class ServerPool {
+  private static USE_HACKNET = false;
   private servers: ServerInfo[];
 
   constructor(private readonly ns: NS) {
-    this.servers = getServers(ns)
-      .map(ns.getServer)
-      .filter((s) => s.hasAdminRights && (s.hostname === 'home' ? s.maxRam - 32 : s.maxRam) > 1.6)
-      .map((s) => {
+    this.servers = getCacheData(ns, ServersCache)
+      .filter(
+        (s) =>
+          s.hasAdminRights &&
+          (s.hostname === 'home' ? s.maxRam - 32 : s.maxRam) > 1.6 &&
+          (ServerPool.USE_HACKNET || !s.hostname.startsWith('hacknet')),
+      )
+      .map((so) => {
+        const s = ns.getServer(so.hostname);
         const max = s.maxRam;
         const ram = s.maxRam - s.ramUsed;
         const reserved = s.hostname === 'home' ? 32 : 0;

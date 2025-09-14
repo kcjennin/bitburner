@@ -248,6 +248,26 @@ export class Stock {
     return jobPort.read();
   }
 
+  toTableRow(): string {
+    return [
+      this.sym.padEnd(6),
+      this.forecast.toFixed(3).padStart(7),
+      this.volatility.toFixed(3).padStart(7),
+      this.absoluteReturn.toExponential(2).padStart(10),
+      this.blackoutWindow.toString().padStart(5),
+    ].join(' ');
+  }
+
+  static tableHeader(): string {
+    return [
+      'Symbol'.padEnd(6),
+      'Forecast'.padStart(7),
+      'Vol'.padStart(7),
+      'AbsRet'.padStart(10),
+      'BlkOut'.padStart(5),
+    ].join(' ');
+  }
+
   private static historyForecast(hist: number[]): number {
     // get the number of recorded price increases in the given history and scale to [0, 1]
     if (hist.length < 2) return 0.5;

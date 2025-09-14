@@ -1,6 +1,8 @@
-import { Multipliers, NS } from '@ns';
+import { Multipliers, NS, ScriptArg } from '@ns';
 
 type Multiplier = keyof Multipliers;
+type TargetType = keyof Target;
+type OperationType = 'stats' | 'owned' | 'faction' | 'prereq' | 'purchase' | 'repReq' | 'price';
 
 interface Target {
   rep: Multiplier[];
@@ -9,6 +11,7 @@ interface Target {
   charisma: Multiplier[];
   crime: Multiplier[];
   bladeburner: Multiplier[];
+  hacknet: Multiplier[];
 }
 
 const TARGET: Target = {
@@ -32,14 +35,30 @@ const TARGET: Target = {
     'bladeburner_analysis',
     'bladeburner_success_chance',
   ],
+  hacknet: [
+    'hacknet_node_money',
+    'hacknet_node_purchase_cost',
+    'hacknet_node_ram_cost',
+    'hacknet_node_core_cost',
+    'hacknet_node_level_cost',
+  ],
 } as const;
 
-type TargetType = keyof Target;
+const ALWAYS_BUY = ['CashRoot Starter Kit', 'Neuroreceptor Management Implant'];
 
-function onTarget(ns: NS, augment: string, targets: TargetType[]) {
-  const stats = ns.singularity.getAugmentationStats(augment);
+async function onTarget(ns: NS, augment: string, targets: TargetType[]) {
+  const stats = await operation(ns, 'stats', augment);
   const multTargets = targets.flatMap((t) => TARGET[t]);
-  return multTargets.some((t) => stats[t] > 1);
+  return multTargets.some((t) => stats[t] > 1) || ALWAYS_BUY.includes(augment);
+}
+
+async function operation(ns: NS, action: OperationType, ...args: ScriptArg[]) {
+  const jobPid = ns.run(`/singularity/workers/${action}.js`, 1, ...args);
+  if (jobPid === 0) throw 'Failed to make transaction. Not enough RAM?';
+  const jobPort = ns.getPortHandle(jobPid);
+
+  if (jobPort.empty()) await jobPort.nextWrite();
+  return JSON.parse(jobPort.read());
 }
 
 export async function main(ns: NS): Promise<void> {
@@ -57,28 +76,35 @@ export async function main(ns: NS): Promise<void> {
 
   const po = ns.getPlayer();
   let money = cliMoney > 0 ? cliMoney : po.money;
-  const owned = ns.singularity.getOwnedAugmentations(true);
+  const owned = await operation(ns, 'owned');
 
   const available: { name: string; faction: string; rep: number; cost: number; prereqs: string[] }[] = [];
   for (const faction of po.factions) {
     const totalRep = cliRep > 0 ? cliRep : ns.singularity.getFactionRep(faction);
-    const factionAugs = ns.singularity
-      .getAugmentationsFromFaction(faction)
-      .filter(
-        (a) =>
-          a !== 'NeuroFlux Governor' &&
-          !owned.includes(a) &&
-          !available.find(({ name }) => name === a) &&
-          onTarget(ns, a, skillTargets),
-      )
-      .map((a) => ({
+    const augsFromFaction = [];
+    for (const a of await operation(ns, 'faction', faction)) {
+      if (
+        a !== 'NeuroFlux Governor' &&
+        !owned.includes(a) &&
+        !available.find(({ name }) => name === a) &&
+        (await onTarget(ns, a, skillTargets))
+      ) {
+        augsFromFaction.push(a);
+      }
+    }
+
+    const factionAugs: { name: string; faction: string; rep: number; cost: number; prereqs: string[] }[] = [];
+    for (const a of augsFromFaction) {
+      const aInfo = {
         name: a,
         faction,
-        rep: ns.singularity.getAugmentationRepReq(a),
-        cost: ns.singularity.getAugmentationPrice(a),
-        prereqs: ns.singularity.getAugmentationPrereq(a),
-      }))
-      .filter(({ rep, cost }) => rep <= totalRep && cost <= money);
+        rep: (await operation(ns, 'repReq', a)) as number,
+        cost: (await operation(ns, 'price', a)) as number,
+        prereqs: (await operation(ns, 'prereq', a)) as string[],
+      };
+
+      if (aInfo.rep <= totalRep && aInfo.cost <= money) factionAugs.push(aInfo);
+    }
     available.push(...factionAugs);
   }
   available.sort((a, b) => b.cost - a.cost);
@@ -102,7 +128,7 @@ export async function main(ns: NS): Promise<void> {
       }
       if (cost > money) continue;
 
-      if (!n) ns.singularity.purchaseAugmentation(faction, name);
+      if (!n) await operation(ns, 'purchase', faction, name);
       madePurchase = true;
       owned.push(name);
       output.push(`  - ${name}`);
@@ -126,11 +152,11 @@ export async function main(ns: NS): Promise<void> {
     if (mostRep !== undefined) {
       let nfCount = 0;
       while (true) {
-        const cost = ns.singularity.getAugmentationPrice('NeuroFlux Governor');
+        const cost = await operation(ns, 'price', 'NeuroFlux Governor');
         ns.tprint(cost);
         if (cost > money) break;
 
-        if (!n) ns.singularity.purchaseAugmentation(mostRep, 'NeuroFlux Governor');
+        if (!n) await operation(ns, 'purchase', mostRep, 'NeuroFlux Governor');
         money -= cost;
         nfCount++;
         await ns.sleep(0);
@@ -140,6 +166,6 @@ export async function main(ns: NS): Promise<void> {
     }
   }
 
-  output.push(`Spent $${ns.formatNumber(moneyBefore - (n ? money : ns.getServerMoneyAvailable('home')))}.`);
+  output.push(`Spent $${ns.formatNumber(moneyBefore - (n ? money : ns.getPlayer().money))}.`);
   ns.tprint(output.join('\n'));
 }

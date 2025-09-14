@@ -58,24 +58,12 @@ export function checkTarget(ns: NS, server: string, target = 'n00dles', forms = 
   return target;
 }
 
-/** Copy over scripts which checking to make sure we have root access. */
-export function copyScripts(ns: NS, server: string, scripts: string[], overwrite = false) {
-  for (const script of scripts) {
-    if ((!ns.fileExists(script, server) || overwrite) && ns.hasRootAccess(server)) {
-      ns.scp(script, server);
-    }
-  }
-}
-
 /** Check that a server is at max money and min security. */
 export function isPrepped(ns: NS, server: string): boolean {
-  const eps = 0.0001;
-  const maxMoney = ns.getServerMaxMoney(server);
-  const money = ns.getServerMoneyAvailable(server);
-  const minSec = ns.getServerMinSecurityLevel(server);
-  const sec = ns.getServerSecurityLevel(server);
-  const secFix = Math.abs(sec - minSec) < eps;
-  return money === maxMoney && secFix;
+  const eps = 1e-7;
+  const { moneyAvailable = 0, moneyMax = 0, hackDifficulty = 0, minDifficulty = 0 } = ns.getServer(server);
+
+  return moneyAvailable >= moneyMax - eps && hackDifficulty <= minDifficulty + eps;
 }
 
 function buildServerGraph(ns: NS, start: string): Record<string, string[]> {

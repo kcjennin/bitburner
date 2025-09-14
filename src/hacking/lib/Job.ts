@@ -1,10 +1,11 @@
 import { NS } from '@ns';
-import { Target } from '@/hacking/jit/Target';
+import { Target } from './Target';
 
 export const JOB_TYPES = ['hack', 'weaken1', 'grow', 'weaken2'] as const;
 type JobType = (typeof JOB_TYPES)[number];
 const COSTS = { hack: 1.7, weaken1: 1.75, grow: 1.75, weaken2: 1.75 };
-const SCRIPTS = {
+
+const OLD_SCRIPTS = {
   hack: '/hacking/workers/tHack.js',
   weaken1: '/hacking/workers/tWeaken.js',
   grow: '/hacking/workers/tGrow.js',
@@ -35,7 +36,7 @@ export class Job {
   }
 
   script() {
-    return SCRIPTS[this.type];
+    return OLD_SCRIPTS[this.type];
   }
 }
 
@@ -52,8 +53,4 @@ export async function submitJob(ns: NS, job: Job): Promise<number> {
   const port = ns.getPortHandle(pid);
   await port.nextWrite();
   return port.read();
-}
-
-export function copyScripts(ns: NS, server: string) {
-  Object.values(SCRIPTS).forEach((s) => ns.scp(s, server));
 }
