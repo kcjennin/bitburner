@@ -1,15 +1,15 @@
 import { NS } from '@ns';
 import { Target } from './Target';
 
-export const JOB_TYPES = ['hack', 'weaken1', 'grow', 'weaken2'] as const;
+export const JOB_TYPES = ['h', 'w1', 'g', 'w2'] as const;
 type JobType = (typeof JOB_TYPES)[number];
-const COSTS = { hack: 1.7, weaken1: 1.75, grow: 1.75, weaken2: 1.75 };
+const COSTS = { h: 1.7, w1: 1.75, g: 1.75, w2: 1.75 };
 
 const OLD_SCRIPTS = {
-  hack: '/hacking/workers/tHack.js',
-  weaken1: '/hacking/workers/tWeaken.js',
-  grow: '/hacking/workers/tGrow.js',
-  weaken2: '/hacking/workers/tWeaken.js',
+  h: '/hacking/workers/tHack.js',
+  w1: '/hacking/workers/tWeaken.js',
+  g: '/hacking/workers/tGrow.js',
+  w2: '/hacking/workers/tWeaken.js',
 };
 
 export class Job {

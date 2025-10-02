@@ -1,7 +1,7 @@
 import { NS } from '@ns';
 import { Expediter } from '@/hacking/lib/Expediter';
 import { Target } from '@/hacking/lib/Target';
-import { getCacheData, ServersCache } from '@/lib/Cache';
+import { getServers } from '@/lib/utils';
 
 export function isPrepped(ns: NS, server: string): boolean {
   const so = ns.getServer(server);
@@ -12,7 +12,9 @@ export async function prep(ns: NS, ram: Expediter, target: string) {
   const dataPort = ns.getPortHandle(ns.pid);
 
   while (!isPrepped(ns, target)) {
-    getCacheData(ns, ServersCache).filter((s) => s.hasAdminRights);
+    getServers(ns)
+      .map(ns.getServer)
+      .filter((s) => s.hasAdminRights);
     const so = ns.getServer(target);
     const po = ns.getPlayer();
     ram.update();
@@ -114,7 +116,8 @@ export function serverWeight(ns: NS, server: string): number {
 
 export function chooseTarget(ns: NS): string | undefined {
   // get all the servers that are eligible for hacking and sort by a naive weight
-  const servers = getCacheData(ns, ServersCache)
+  const servers = getServers(ns)
+    .map(ns.getServer)
     .filter((s) => s.hasAdminRights && serverWeight(ns, s.hostname) > 0)
     .sort((a, b) => serverWeight(ns, b.hostname) - serverWeight(ns, a.hostname));
 

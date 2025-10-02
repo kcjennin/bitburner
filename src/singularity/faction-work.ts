@@ -1,14 +1,19 @@
 import { FactionWorkType, NS } from '@ns';
 
 const PERIOD = 1000;
-// in order of priority
-const WORK_LIST = ['hacking', 'field', 'security'];
 
 export async function main(ns: NS): Promise<void> {
   const { noMax, _: excludes } = ns.flags([['noMax', false]]) as { noMax: boolean; _: string[] };
   ns.disableLog('ALL');
   const task = { faction: 'none', action: 'none' };
   const lastRep = { name: 'none', rep: 0 };
+
+  const workList: string[] = [];
+  if (ns.getPlayer().skills.hacking > ns.getPlayer().skills.strength) {
+    workList.push('hacking', 'field', 'security');
+  } else {
+    workList.push('security', 'field', 'hacking');
+  }
 
   while (true) {
     const ownedAugments = ns.singularity.getOwnedAugmentations(true);
@@ -38,7 +43,7 @@ export async function main(ns: NS): Promise<void> {
     // try to do some work for the faction if we aren't already
     if (task.faction !== name) {
       let result = false;
-      for (const wt of WORK_LIST) {
+      for (const wt of workList) {
         result = ns.singularity.workForFaction(name, wt as FactionWorkType, focus());
         if (result) {
           task.action = wt;

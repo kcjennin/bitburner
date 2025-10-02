@@ -1,4 +1,4 @@
-import { getCacheData, ServersCache } from '@/lib/Cache';
+import { getServers } from '@/lib/utils';
 import { NS } from '@ns';
 
 const WORKER = '/scripts/workers/tShare.js';
@@ -8,9 +8,7 @@ export async function main(ns: NS): Promise<void> {
   dataPort.clear();
 
   while (true) {
-    const servers = getCacheData(ns, ServersCache)
-      .filter((s) => s.hasAdminRights)
-      .map((s) => s.hostname);
+    const servers = getServers(ns).filter((s) => ns.hasRootAccess(s));
 
     let numJobs = 0;
     for (const server of servers) {

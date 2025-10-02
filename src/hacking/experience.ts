@@ -2,7 +2,7 @@ import { NS } from '@ns';
 import { Expediter } from '@/hacking/lib/Expediter';
 import { isPrepped, prep } from '@/hacking/lib/util';
 import { STOCK_MAP } from '../data/stock-map';
-import { getCacheData, ServersCache } from '@/lib/Cache';
+import { getServers } from '@/lib/utils';
 
 type STOCK_ORG = keyof typeof STOCK_MAP;
 
@@ -15,7 +15,8 @@ export async function main(ns: NS): Promise<void> {
   let fired = 0;
 
   const po = ns.getPlayer();
-  let so = getCacheData(ns, ServersCache)
+  let so = getServers(ns)
+    .map(ns.getServer)
     .filter((s) => s.hasAdminRights && po.skills.hacking >= (s.requiredHackingSkill ?? Infinity))
     .sort((a, b) => {
       const [gtA, gtB] = [a, b].map((s) => ns.formulas.hacking.growTime(s, po));
@@ -38,7 +39,6 @@ export async function main(ns: NS): Promise<void> {
 
   while (true) {
     // make sure all servers have the executable scripts
-    getCacheData(ns, ServersCache).filter((s) => s.hasAdminRights);
     ram.update();
 
     // do stock stuff if needed

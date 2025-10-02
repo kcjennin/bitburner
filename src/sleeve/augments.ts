@@ -43,7 +43,15 @@ function onTarget(ns: NS, augment: string, targets: TargetType[]) {
 }
 
 export async function main(ns: NS): Promise<void> {
-  const { _: targets } = ns.flags([]) as { _: TargetType[] };
+  const { _: cliTargets } = ns.flags([]) as { _: (TargetType | 'all')[] };
+
+  const targets: TargetType[] = [];
+  if (cliTargets.length === 1 && cliTargets[0] === 'all') {
+    targets.push(...(Object.keys(TARGET) as TargetType[]));
+  } else {
+    targets.push(...(cliTargets as TargetType[]));
+  }
+
   if (!targets.includes('rep')) targets.push('rep');
 
   let money = ns.getServerMoneyAvailable('home');

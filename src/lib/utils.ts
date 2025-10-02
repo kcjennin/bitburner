@@ -1,8 +1,5 @@
 import { NS, ScriptArg } from '@ns';
 
-export const WORKERS = ['/hacking/workers/tHack.js', '/hacking/workers/tWeaken.js', '/hacking/workers/tGrow.js'];
-export const SCRIPTS = { hack: WORKERS[0], weaken1: WORKERS[1], grow: WORKERS[2], weaken2: WORKERS[1] };
-
 export type Block = { server: string; ram: number };
 
 export async function main(ns: NS): Promise<void> {

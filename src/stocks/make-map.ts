@@ -1,11 +1,12 @@
-import { getCacheData, ServersCache } from '@/lib/Cache';
+import { getServers } from '@/lib/utils';
 import { NS } from '@ns';
 
 const MAP_FILE = '/data/stock-map.js';
 
 export async function main(ns: NS) {
   const organizationToServer = Object.fromEntries(
-    getCacheData(ns, ServersCache)
+    getServers(ns)
+      .map(ns.getServer)
       .map((s) => [s.organizationName, s])
       .filter(([on]) => on !== ''),
   );

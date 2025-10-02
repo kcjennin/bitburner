@@ -1,4 +1,4 @@
-import { getCacheData, ServersCache } from '@/lib/Cache';
+import { getServers } from '@/lib/utils';
 import { AutocompleteData, NS } from '@ns';
 
 function getServerData(ns: NS, server: string) {
@@ -34,7 +34,7 @@ export async function main(ns: NS): Promise<void> {
   if (ns.args.length >= 1) {
     servers = ns.args.map(String);
   } else {
-    servers = getCacheData(ns, ServersCache).map((s) => s.hostname);
+    servers = getServers(ns);
   }
   servers.forEach((s) => ns.tprint(getServerData(ns, s)));
 }

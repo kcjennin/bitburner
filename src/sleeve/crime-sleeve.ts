@@ -1,4 +1,8 @@
-import { CrimeStats, CrimeType, GymType, NS, SleevePerson } from '@ns';
+import { CrimeStats, NS, SleevePerson } from '@ns';
+import { improveSleeve } from '@/sleeve/improve-sleeve';
+import { dodge } from '@/lib/dodge';
+
+type ExtendedCrimeStats = CrimeStats & { income: number; realIncome: number; chance: number };
 
 const CRIMES = [
   'Shoplift',
@@ -16,21 +20,6 @@ const CRIMES = [
 ];
 const IntelligenceCrimeWeight = 0.025;
 const MaxSkillLevel = 975;
-
-async function improve(ns: NS, sleeve: number, skill: string) {
-  if (['str', 'def', 'dex', 'agi'].includes(skill)) {
-    // gym skills
-    ns.sleeve.setToGymWorkout(sleeve, 'Powerhouse Gym', skill as GymType);
-  } else if (skill === 'hack') {
-    // hacking
-    ns.sleeve.setToUniversityCourse(sleeve, 'Rothman University', 'Algorithms');
-  } else if (skill === 'cha') {
-    // charisma
-    ns.sleeve.setToUniversityCourse(sleeve, 'Rothman University', 'Management');
-  } else {
-    throw `Invalid skill: ${skill}`;
-  }
-}
 
 function calculateIntelligenceBonus(intelligence: number, weight = 1): number {
   return 1 + (weight * Math.pow(intelligence, 0.8)) / 600;
@@ -68,18 +57,19 @@ export async function main(ns: NS): Promise<void> {
         sNnT[2] = task;
       };
 
-      const p = ns.sleeve.getSleeve(sleeveNumber);
-      if (p.city !== 'Sector-12') throw 'Must be in Sector-12';
+      const p = (await dodge({ ns, command: `ns.sleeve.getSleeve(${sleeveNumber})` })) as SleevePerson;
       const {
         skills: { hacking, strength, defense, dexterity, agility, charisma },
       } = p;
-      const crimeStats = CRIMES.map((c) => {
-        const stats = ns.singularity.getCrimeStats(c as CrimeType);
+      const crimeStats: ExtendedCrimeStats[] = [];
+      for (const c of CRIMES) {
+        const stats = (await dodge({ ns, command: `ns.singularity.getCrimeStats("${c}")` })) as CrimeStats;
         const income = stats.money / stats.time;
         const chance = successRate(stats, p);
         const realIncome = income * chance;
-        return { income, realIncome, chance, ...stats };
-      }).sort((a, b) => b.realIncome - a.realIncome);
+        crimeStats.push({ income, realIncome, chance, ...stats });
+      }
+      crimeStats.sort((a, b) => b.realIncome - a.realIncome);
 
       // current best crime to run
       let current;
@@ -89,15 +79,15 @@ export async function main(ns: NS): Promise<void> {
 
         if (current.realIncome < 1) {
           // no profitable crimes, train
-          if (agility > dexterity) await improve(ns, sleeveNumber, 'dex');
-          else await improve(ns, sleeveNumber, 'agi');
+          if (agility > dexterity) await improveSleeve(ns, sleeveNumber, 'dex');
+          else await improveSleeve(ns, sleeveNumber, 'agi');
           setNext(10000, 'Training');
           continue;
         }
       } else {
         // no crimes at all, train
-        if (agility > dexterity) await improve(ns, sleeveNumber, 'dex');
-        else await improve(ns, sleeveNumber, 'agi');
+        if (agility > dexterity) await improveSleeve(ns, sleeveNumber, 'dex');
+        else await improveSleeve(ns, sleeveNumber, 'agi');
         setNext(10000, 'Training');
         continue;
       }
@@ -118,11 +108,12 @@ export async function main(ns: NS): Promise<void> {
         const [name] = weightedSkills
           .filter(([, s]) => s > 0)
           .reduce(([minN, minS], [n, s]) => (s < minS ? [n, s] : [minN, minS]));
-        await improve(ns, sleeveNumber, name);
+        await improveSleeve(ns, sleeveNumber, name);
         setNext(10000, 'Stepping Up');
       } else {
         // nothing to step up to, commit crime
-        if (task !== current.type) ns.sleeve.setToCommitCrime(sleeveNumber, current.type as CrimeType);
+        if (task !== current.type)
+          await dodge({ ns, command: `ns.sleeve.setToCommitCrime(${sleeveNumber}, "${current.type}")` });
         setNext(current.time, current.type);
       }
     }

@@ -2,9 +2,9 @@ import { NS } from '@ns';
 import { Expediter } from '@/hacking/lib/Expediter';
 
 export class Target {
-  private readonly COSTS = { hack: 1.7, weaken1: 1.75, grow: 1.75, weaken2: 1.75 };
-  times: { hack: number; weaken1: number; grow: number; weaken2: number };
-  threads: { hack: number; weaken1: number; grow: number; weaken2: number };
+  private readonly COSTS = { h: 1.7, w1: 1.75, g: 1.75, w2: 1.75 };
+  times: { h: number; w1: number; g: number; w2: number };
+  threads: { h: number; w1: number; g: number; w2: number };
   ramRate: number;
   moneyRate: number;
   delay: number;
@@ -15,16 +15,16 @@ export class Target {
 
   constructor(private ns: NS, public name: string, public spacer: number, public greed: number) {
     this.times = {
-      hack: 0,
-      weaken1: 0,
-      grow: 0,
-      weaken2: 0,
+      h: 0,
+      w1: 0,
+      g: 0,
+      w2: 0,
     };
     this.threads = {
-      hack: 0,
-      weaken1: 0,
-      grow: 0,
-      weaken2: 0,
+      h: 0,
+      w1: 0,
+      g: 0,
+      w2: 0,
     };
     this.ramRate = 0;
     this.moneyRate = 0;
@@ -67,36 +67,36 @@ export class Target {
     so.hackDifficulty = so.minDifficulty ?? 0;
     so.moneyAvailable = so.moneyMax ?? 0;
 
-    this.times.hack = Math.ceil(ns.formulas.hacking.hackTime(so, po));
-    this.times.weaken1 = Math.ceil(ns.formulas.hacking.weakenTime(so, po));
-    this.times.grow = Math.ceil(ns.formulas.hacking.growTime(so, po));
-    this.times.weaken2 = Math.ceil(ns.formulas.hacking.weakenTime(so, po));
+    this.times.h = Math.ceil(ns.formulas.hacking.hackTime(so, po));
+    this.times.w1 = Math.ceil(ns.formulas.hacking.weakenTime(so, po));
+    this.times.g = Math.ceil(ns.formulas.hacking.growTime(so, po));
+    this.times.w2 = Math.ceil(ns.formulas.hacking.weakenTime(so, po));
 
     const hPercent = ns.formulas.hacking.hackPercent(so, po);
-    this.threads.hack = Math.ceil(greed / hPercent);
-    this.batchMoney = Math.floor(so.moneyAvailable * hPercent) * this.threads.hack;
+    this.threads.h = Math.ceil(greed / hPercent);
+    this.batchMoney = Math.floor(so.moneyAvailable * hPercent) * this.threads.h;
 
     so.moneyAvailable -= this.batchMoney;
-    so.hackDifficulty += this.threads.hack * 0.002;
+    so.hackDifficulty += this.threads.h * 0.002;
 
-    this.threads.weaken1 = Math.ceil((so.hackDifficulty - (so.minDifficulty ?? 0)) / 0.05);
+    this.threads.w1 = Math.ceil((so.hackDifficulty - (so.minDifficulty ?? 0)) / 0.05);
     so.hackDifficulty = so.minDifficulty ?? 0;
 
     // over approximate by 5%, hopefully reduces desyncs
-    this.threads.grow = Math.ceil(ns.formulas.hacking.growThreads(so, po, so.moneyMax ?? 0) * 1.05);
+    this.threads.g = Math.ceil(ns.formulas.hacking.growThreads(so, po, so.moneyMax ?? 0) * 1.05);
     so.moneyAvailable = so.moneyMax ?? 0;
-    so.hackDifficulty += this.threads.grow * 0.004;
+    so.hackDifficulty += this.threads.g * 0.004;
 
-    this.threads.weaken2 = Math.ceil((so.hackDifficulty - (so.minDifficulty ?? 0)) / 0.05);
+    this.threads.w2 = Math.ceil((so.hackDifficulty - (so.minDifficulty ?? 0)) / 0.05);
     so.hackDifficulty = so.minDifficulty ?? 0;
 
-    let batchRam = this.threads.hack * this.COSTS.hack;
-    batchRam += this.threads.weaken1 * this.COSTS.weaken1;
-    batchRam += this.threads.grow * this.COSTS.grow;
-    batchRam += this.threads.weaken2 * this.COSTS.weaken2;
+    let batchRam = this.threads.h * this.COSTS.h;
+    batchRam += this.threads.w1 * this.COSTS.w1;
+    batchRam += this.threads.g * this.COSTS.g;
+    batchRam += this.threads.w2 * this.COSTS.w2;
 
-    const batchTime = this.times.weaken2 + 2 * this.spacer;
-    this.actualMaxBatches = Math.ceil(this.times.weaken2 / (this.spacer * 4));
+    const batchTime = this.times.w2 + 2 * this.spacer;
+    this.actualMaxBatches = Math.ceil(this.times.w2 / (this.spacer * 4));
     // don't over allocate the batches
     this.maxBatches = Math.max(this.actualMaxBatches - scheduled, 0);
 
@@ -107,10 +107,10 @@ export class Target {
     const ramCopy = ram.copy();
     let ramBatches = 0;
     for (let i = 0; i < this.maxBatches; ++i) {
-      if (!ramCopy.reserve(this.threads.hack * this.COSTS.hack)) break;
-      if (!ramCopy.reserve(this.threads.weaken1 * this.COSTS.weaken1)) break;
-      if (!ramCopy.reserve(this.threads.grow * this.COSTS.grow)) break;
-      if (!ramCopy.reserve(this.threads.weaken2 * this.COSTS.weaken2)) break;
+      if (!ramCopy.reserve(this.threads.h * this.COSTS.h)) break;
+      if (!ramCopy.reserve(this.threads.w1 * this.COSTS.w1)) break;
+      if (!ramCopy.reserve(this.threads.g * this.COSTS.g)) break;
+      if (!ramCopy.reserve(this.threads.w2 * this.COSTS.w2)) break;
       ++ramBatches;
     }
     this.maxBatches = Math.min(this.maxBatches, ramBatches);
@@ -118,7 +118,7 @@ export class Target {
     this.moneyRate = Math.ceil((this.batchMoney * this.maxBatches) / (batchTime / 1000));
 
     // Try to keep the current end, but we can't start batches faster than w2 time
-    this.end = Math.max(this.end, Date.now() + this.times.weaken2 + this.spacer);
+    this.end = Math.max(this.end, Date.now() + this.times.w2 + this.spacer);
 
     return this;
   }

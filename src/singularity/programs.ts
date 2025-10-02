@@ -1,29 +1,34 @@
 import { NS } from '@ns';
 import { hackServer } from '@/hacking/crawler';
-import { getCacheData, ServersCache, setCacheData } from '@/lib/Cache';
+import { getServers } from '@/lib/utils';
 
 const PROGRAMS = ['BruteSSH.exe', 'FTPCrack.exe', 'relaySMTP.exe', 'HTTPWorm.exe', 'SQLInject.exe'];
 
 export async function main(ns: NS): Promise<void> {
+  const { wait } = ns.flags([['wait', false]]) as { wait: boolean };
   let numPrograms = -1;
 
   while (numPrograms < PROGRAMS.length) {
     if (ns.getServerMoneyAvailable('home') > 200e3) ns.singularity.purchaseTor();
 
-    // before trying to buy new programs, try to upgrade home ram
     const newPrograms = PROGRAMS.filter(
       (program) => ns.fileExists(program) || ns.singularity.purchaseProgram(program),
     ).length;
 
     if (newPrograms > numPrograms) {
-      const newServers = getCacheData(ns, ServersCache);
+      const newServers = getServers(ns);
       newServers.forEach((s) => hackServer(ns, s));
-      setCacheData(ns, ServersCache, newServers);
     }
 
     numPrograms = newPrograms;
+    if (!wait) break;
+
     if (numPrograms < PROGRAMS.length) await ns.sleep(1e3);
   }
 
-  ns.toast('All programs purchased.');
+  if (numPrograms === PROGRAMS.length) {
+    ns.toast('All programs purchased.');
+  } else {
+    ns.toast(`Purchased ${numPrograms} / ${PROGRAMS.length} programs.`);
+  }
 }

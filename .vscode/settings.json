@@ -5,7 +5,7 @@
         // For TSLint
         "source.fixAll.tslint": "always",
         // For Stylelint
-        "source.fixAll.stylelint": "always"
+        "source.fixAll.stylelint": "never"
     },
     "editor.formatOnSave": true,
     "editor.tabSize": 2,

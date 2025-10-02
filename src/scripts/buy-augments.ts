@@ -66,12 +66,20 @@ export async function main(ns: NS): Promise<void> {
     m: cliMoney,
     r: cliRep,
     n,
-    _: skillTargets,
+    _: cliTargets,
   } = ns.flags([
     ['m', -1],
     ['r', -1],
     ['n', false],
-  ]) as { m: number; r: number; n: boolean; _: TargetType[] };
+  ]) as { m: number; r: number; n: boolean; _: (TargetType | 'all')[] };
+
+  const skillTargets: TargetType[] = [];
+  if (cliTargets.length === 1 && cliTargets[0] === 'all') {
+    skillTargets.push(...(Object.keys(TARGET) as TargetType[]));
+  } else {
+    skillTargets.push(...(cliTargets as TargetType[]));
+  }
+
   if (!skillTargets.includes('rep')) skillTargets.push('rep');
 
   const po = ns.getPlayer();

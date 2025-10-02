@@ -21,7 +21,7 @@ export async function main(ns: NS) {
       const values = [];
 
       headers.push('Karma');
-      values.push(ns.formatNumber(ns.heart.break(), 0));
+      values.push(ns.formatNumber(ns.heart.break(), undefined, undefined, true));
 
       hook0.innerText = headers.join(' \n');
       hook1.innerText = values.join('\n');

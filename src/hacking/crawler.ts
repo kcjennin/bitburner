@@ -1,36 +1,31 @@
 /* eslint-disable prettier/prettier */
-import { getCacheData, ServersCache, setCacheData } from '@/lib/Cache';
-import { NS, Server } from '@ns';
+import { getServers } from '@/lib/utils';
+import { NS } from '@ns';
 
-export async function hackServer(ns: NS, s: Server): Promise<boolean> {
-  let open = 0;
-  try { if (ns.brutessh(s.hostname)) s.sshPortOpen = true; open++; } catch { /* nothing */ }
-  try { if (ns.ftpcrack(s.hostname)) s.ftpPortOpen = true; open++; } catch { /* nothing */ }
-  try { if (ns.httpworm(s.hostname)) s.httpPortOpen = true; open++; } catch { /* nothing */ }
-  try { if (ns.sqlinject(s.hostname)) s.sqlPortOpen = true; open++; } catch { /* nothing */ }
-  try { if (ns.relaysmtp(s.hostname)) s.smtpPortOpen = true; open++ } catch { /* nothing */ }
-  try {
-    s.openPortCount = open;
+export async function hackServer(ns: NS, s: string): Promise<boolean> {
+  try { ns.brutessh(s) } catch { /* nothing */ }
+  try { ns.ftpcrack(s) } catch { /* nothing */ }
+  try { ns.httpworm(s) } catch { /* nothing */ }
+  try { ns.sqlinject(s) } catch { /* nothing */ }
+  try { ns.relaysmtp(s) } catch { /* nothing */ }
+  try { return ns.nuke(s); } catch { return false }
+}
 
-    const nukeVal = ns.nuke(s.hostname);
-    s.hasAdminRights = nukeVal;
-    return nukeVal;
-  } catch { /* nothing */ }
-  return false;
+export function copyWorkers(ns: NS, servers: string[]) {
+  const scripts = ns.ls('home', '/hacking/workers').concat(
+    ns.ls('home', '/scripts/workers')
+  )
+  servers.forEach((s) => ns.scp(scripts, s));
 }
 
 export async function main(ns: NS): Promise<void> {
-  const servers = getCacheData(ns, ServersCache);
+  const servers = getServers(ns);
   let rooted = 0;
   for (const s of servers) {
     if (await hackServer(ns, s)) rooted++;
   }
-  setCacheData(ns, ServersCache, servers);
 
-  const scripts = ns.ls('home', '/hacking/workers').concat(
-    ns.ls('home', '/scripts/workers')
-  )
-  servers.forEach((s) => ns.scp(scripts, s.hostname));
+  copyWorkers(ns, servers);
 
   ns.tprint(`Rooted ${rooted} servers.`);
 }

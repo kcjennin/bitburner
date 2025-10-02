@@ -1,14 +1,17 @@
 import {
   BladeburnerActionName,
   BladeburnerActionType,
+  BladeburnerBlackOpName,
   BladeburnerContractName,
   BladeburnerCurAction,
+  CityName,
   NS,
   SleeveBladeburnerTask,
   SleeveClassTask,
   SleeveInfiltrateTask,
 } from '@ns';
 import { improveSleeve } from '@/sleeve/improve-sleeve';
+import { dodge } from '@/lib/dodge';
 
 type TaskStats = {
   name: BladeburnerActionName;
@@ -38,60 +41,114 @@ const REST_TASK: TaskStats = {
   chance: [1, 1],
 };
 
-function trySleevesContracts(ns: NS): number[] {
+function initializeHUD(ns: NS) {
+  const d = eval('document') as Document;
+  const theme = ns.ui.getTheme();
+
+  let staminaHtmlDisplay = d.getElementById('stamina-display-1');
+  let rankHtmlDisplay = d.getElementById('rank-display-1');
+  if (staminaHtmlDisplay !== null && rankHtmlDisplay !== null) {
+    return { stamina: staminaHtmlDisplay, rank: rankHtmlDisplay };
+  }
+
+  const hpTableRow = d.getElementById('overview-hp-hook')?.parentElement?.parentElement;
+  const extraTableRow = d.getElementById('overview-extra-hook-0')?.parentElement?.parentElement;
+  if (!hpTableRow || !extraTableRow) throw 'Failed to get custom elements.';
+
+  const staminaTableRow = hpTableRow.cloneNode(true) as HTMLElement;
+  staminaTableRow.querySelectorAll('p > p').forEach((el) => el.parentElement?.removeChild(el));
+  staminaTableRow.querySelectorAll('p').forEach((el, i) => (el.id = `stamina-display-${i}`));
+
+  staminaHtmlDisplay = staminaTableRow.querySelector('#stamina-display-1') as HTMLElement;
+  staminaTableRow.querySelectorAll('p')[0].innerText = 'Stamina';
+  staminaTableRow.querySelectorAll('p')[0].style.color = theme['hp'];
+  staminaHtmlDisplay.innerText = '0.000 / 0.000';
+  staminaHtmlDisplay.style.color = theme['hp'];
+
+  const rankTableRow = extraTableRow.cloneNode(true) as HTMLElement;
+  rankTableRow.querySelectorAll('p > p').forEach((el) => el.parentElement?.removeChild(el));
+  rankTableRow.querySelectorAll('p').forEach((el, i) => (el.id = `rank-display-${i}`));
+
+  rankHtmlDisplay = rankTableRow.querySelector('#rank-display-1') as HTMLElement;
+  rankTableRow.querySelectorAll('p')[0].innerText = 'Rank';
+  rankHtmlDisplay.innerText = '0.000';
+
+  hpTableRow.after(staminaTableRow);
+  extraTableRow.before(rankTableRow);
+
+  return { stamina: staminaHtmlDisplay, rank: rankHtmlDisplay };
+}
+
+async function trySleevesContracts(ns: NS): Promise<number[]> {
   const contracts = ['Tracking', 'Bounty Hunter', 'Retirement'] as BladeburnerContractName[];
   const contractSleeves: number[] = [];
-  const runningContracts = SLEEVES.map((sn) => {
-    const task = ns.sleeve.getTask(sn);
+  const runningContracts: string[] = [];
+  for (const sn of SLEEVES) {
+    const task = await dodge({ ns, command: `ns.sleeve.getTask(${sn})` });
     const actionName = task?.type === 'BLADEBURNER' ? (task as SleeveBladeburnerTask).actionName : 'other';
-    if (
-      contracts.includes(actionName as BladeburnerContractName) &&
-      ns.bladeburner.getActionEstimatedSuccessChance('Contracts', actionName as BladeburnerContractName, sn)[0] > 0.99
-    )
-      contractSleeves.push(sn);
-    return actionName;
-  }).filter((an) => contracts.includes(an as BladeburnerContractName));
+    if (contracts.includes(actionName as BladeburnerContractName)) {
+      const chance = (await dodge({
+        ns,
+        command: `ns.bladeburner.getActionEstimatedSuccessChance('Contracts', '${actionName}', ${sn})`,
+      })) as [number, number];
+      if (chance[0] > 0.99) contractSleeves.push(sn);
+      runningContracts.push(actionName);
+    }
+  }
 
-  contracts
-    .filter((c) => !runningContracts.includes(c))
-    .forEach((c) => {
-      for (const sn of SLEEVES) {
-        // we've already started this sleeve on a contract
-        if (contractSleeves.includes(sn)) continue;
+  for (const c of contracts) {
+    if (runningContracts.includes(c)) continue;
+    for (const sn of SLEEVES) {
+      // we've already started this sleeve on a contract
+      if (contractSleeves.includes(sn)) continue;
 
-        // not previously running a contract, start it
-        if (ns.bladeburner.getActionEstimatedSuccessChance('Contracts', c, sn)[0] > 0.99) {
-          // if there aren't a lot of remaining tasks infiltrate instead of doing the contract
-          if (ns.bladeburner.getActionCountRemaining('Contracts', c) < 200) {
-            const task = ns.sleeve.getTask(sn);
-            if (task?.type !== 'INFILTRATE') ns.sleeve.setToBladeburnerAction(sn, 'Infiltrate Synthoids');
-          } else {
-            ns.sleeve.setToBladeburnerAction(sn, 'Take on contracts', c);
-          }
-          contractSleeves.push(sn);
-          break;
+      // not previously running a contract, start it
+      const chance = (await dodge({
+        ns,
+        command: `ns.bladeburner.getActionEstimatedSuccessChance('Contracts', '${c}', ${sn})`,
+      })) as [number, number];
+      if (chance[0] > 0.99) {
+        // if there aren't a lot of remaining tasks infiltrate instead of doing the contract
+        const remaining = (await dodge({
+          ns,
+          command: `ns.bladeburner.getActionCountRemaining('Contracts', '${c}')`,
+        })) as number;
+        if (remaining < 200) {
+          const task = await dodge({ ns, command: `ns.sleeve.getTask(${sn})` });
+          if (task?.type !== 'INFILTRATE')
+            await dodge({ ns, command: `ns.sleeve.setToBladeburnerAction(${sn}, 'Infiltrate Synthoids')` });
+        } else {
+          await dodge({ ns, command: `ns.sleeve.setToBladeburnerAction(${sn}, 'Take on contracts', '${c}')` });
         }
+        contractSleeves.push(sn);
+        break;
       }
-    });
+    }
+  }
 
   return contractSleeves;
 }
 
-function setSleeves(
+async function setSleeves(
   ns: NS,
   action: 'Field Analysis' | 'Infiltrate Synthoids' | 'Diplomacy' | 'Hyperbolic Regeneration Chamber' | 'improve',
   excludes: number[] = [],
-): void {
+): Promise<void> {
   const skills = ['Algorithms', 'str', 'def', 'dex', 'agi', 'Leadership'];
 
   for (const sn of SLEEVES) {
     if (excludes.includes(sn)) continue;
-    const task = ns.sleeve.getTask(sn) as SleeveBladeburnerTask | SleeveInfiltrateTask | SleeveClassTask | null;
+    const task = (await dodge({ ns, command: `ns.sleeve.getTask(${sn})` })) as
+      | SleeveBladeburnerTask
+      | SleeveInfiltrateTask
+      | SleeveClassTask
+      | null;
 
     if (action === 'improve') {
       if (ns.getServerMoneyAvailable('home') < 100e6) {
         const actionName = task?.type === 'BLADEBURNER' ? (task as SleeveBladeburnerTask).actionName : 'class';
-        if (actionName !== 'Training') ns.sleeve.setToBladeburnerAction(sn, 'Training');
+        if (actionName !== 'Training')
+          await dodge({ ns, command: `ns.sleeve.setToBladeburnerAction(${sn}, 'Training')` });
       } else {
         const classType = task?.type === 'CLASS' ? (task as SleeveClassTask).classType : 'bladeburner';
         let sIdx = skills.indexOf(classType);
@@ -105,23 +162,26 @@ function setSleeves(
         }
 
         if (skills[sIdx] === 'Algorithms') {
-          improveSleeve(ns, sn, 'hack');
+          await improveSleeve(ns, sn, 'hack');
         } else if (skills[sIdx] === 'Leadership') {
-          improveSleeve(ns, sn, 'cha');
+          await improveSleeve(ns, sn, 'cha');
         } else {
-          improveSleeve(ns, sn, skills[sIdx]);
+          await improveSleeve(ns, sn, skills[sIdx]);
         }
       }
     } else if (action === 'Infiltrate Synthoids') {
-      if (task?.type !== 'INFILTRATE') ns.sleeve.setToBladeburnerAction(sn, 'Infiltrate Synthoids');
+      if (task?.type !== 'INFILTRATE')
+        await dodge({ ns, command: `ns.sleeve.setToBladeburnerAction(${sn}, 'Infiltrate Synthoids')` });
     } else {
       const actionName = task?.type === 'BLADEBURNER' ? (task as SleeveBladeburnerTask).actionName : 'class';
-      if (actionName !== action) ns.sleeve.setToBladeburnerAction(sn, action);
+      if (actionName !== action) await dodge({ ns, command: `ns.sleeve.setToBladeburnerAction(${sn}, '${action}')` });
     }
   }
 }
 
-function doSleeves(ns: NS, tasks: TaskStats[], rested: boolean) {
+async function doSleeves(ns: NS, tasks: TaskStats[], rested: boolean) {
+  const city = (await dodge({ ns, command: `ns.bladeburner.getCity()` })) as CityName;
+  const chaos = (await dodge({ ns, command: `ns.bladeburner.getCityChaos('${city}')` })) as number;
   if (
     tasks.some(({ name, chance: [low, high] }) => {
       if (low < high - 1e-4) {
@@ -131,42 +191,68 @@ function doSleeves(ns: NS, tasks: TaskStats[], rested: boolean) {
       return false;
     })
   ) {
-    setSleeves(ns, 'Field Analysis');
-  } else if (tasks.some(({ remaining }) => remaining < 100)) {
-    setSleeves(ns, 'Infiltrate Synthoids');
-  } else if (ns.bladeburner.getCityChaos(ns.bladeburner.getCity()) > 50) {
-    setSleeves(ns, 'Diplomacy');
+    await setSleeves(ns, 'Field Analysis');
+  } else if (
+    tasks.some(({ type, name, remaining }) => type !== 'Black Operations' && name !== 'Training' && remaining < 100)
+  ) {
+    await setSleeves(ns, 'Infiltrate Synthoids');
+  } else if (chaos > 50) {
+    await setSleeves(ns, 'Diplomacy');
   } else if (!rested) {
-    setSleeves(ns, 'Hyperbolic Regeneration Chamber');
+    await setSleeves(ns, 'Hyperbolic Regeneration Chamber');
   } else {
-    const contractSleeves = trySleevesContracts(ns);
-    setSleeves(ns, 'improve', contractSleeves);
+    const contractSleeves = await trySleevesContracts(ns);
+    await setSleeves(ns, 'improve', contractSleeves);
   }
 }
 
-function doPlayer(ns: NS, tasks: TaskStats[], rested: boolean, endTime: number) {
+async function doPlayer(ns: NS, tasks: TaskStats[], rested: boolean, endTime: number) {
+  let task = REST_TASK;
   if (Date.now() >= endTime) {
-    const action = ns.bladeburner.getCurrentAction();
-    let task = REST_TASK;
-    task.time = ns.bladeburner.getActionTime(task.type, task.name);
+    const action = (await dodge({ ns, command: `ns.bladeburner.getCurrentAction()` })) as BladeburnerCurAction | null;
+    task.time = (await dodge({
+      ns,
+      command: `ns.bladeburner.getActionTime('${task.type}', '${task.name}')`,
+    })) as number;
 
     if (rested) {
       const filteredTasks = tasks
-        .filter(({ remaining, chance }) => remaining >= 1 && chance[0] > 0.3)
+        .filter(({ type, remaining, chance }) => remaining >= 1 && chance[0] > 0.3 && type !== 'Black Operations')
         .sort(({ rank: aR, time: aT }, { rank: bR, time: bT }) => bR / bT - aR / aT);
 
       if (filteredTasks[0]) task = filteredTasks[0];
     }
 
     if (action?.name !== task.name) {
-      ns.bladeburner.startAction(task.type, task.name);
+      await dodge({ ns, command: `ns.bladeburner.startAction('${task.type}', '${task.name}')` });
       endTime = Date.now() + task.time + 20;
     } else {
       endTime += task.time;
     }
   }
 
-  return endTime;
+  return { endTime, name: task.name };
+}
+
+async function createTask(ns: NS, type: BladeburnerActionType, name: BladeburnerActionName): Promise<TaskStats> {
+  const time = (await dodge({ ns, command: `ns.bladeburner.getActionTime('${type}', '${name}')` })) as number;
+  const remaining = (await dodge({
+    ns,
+    command: `ns.bladeburner.getActionCountRemaining('${type}', '${name}')`,
+  })) as number;
+  const repGain = (await dodge({ ns, command: `ns.bladeburner.getActionRepGain('${type}', '${name}')` })) as number;
+  const chance = (await dodge({
+    ns,
+    command: `ns.bladeburner.getActionEstimatedSuccessChance('${type}', '${name}')`,
+  })) as [number, number];
+  return {
+    name,
+    type,
+    time,
+    remaining,
+    rank: repGain * chance[0],
+    chance,
+  };
 }
 
 export async function main(ns: NS): Promise<void> {
@@ -191,30 +277,48 @@ export async function main(ns: NS): Promise<void> {
   ns.disableLog('ALL');
   ns.clearLog();
 
+  const hud = initializeHUD(ns);
+  ns.atExit(() => {
+    hud.stamina.parentElement?.parentElement?.parentElement?.removeChild(hud.stamina.parentElement?.parentElement);
+    hud.rank.parentElement?.parentElement?.parentElement?.removeChild(hud.rank.parentElement?.parentElement);
+  });
+
   let rested = false,
-    endTime = 0;
+    endTime = 0,
+    name: string;
   while (true) {
     // choose the best task for rank
-    const tasks: TaskStats[] = TASKS.map(([type, name]) => {
-      return {
-        name,
-        type,
-        time: ns.bladeburner.getActionTime(type, name),
-        remaining: ns.bladeburner.getActionCountRemaining(type, name),
-        rank:
-          ns.bladeburner.getActionRepGain(type, name, 1) *
-          ns.bladeburner.getActionEstimatedSuccessChance(type, name)[0],
-        chance: ns.bladeburner.getActionEstimatedSuccessChance(type, name),
-      };
-    });
+    const tasks: TaskStats[] = [];
+    for (const [type, name] of TASKS) {
+      tasks.push(await createTask(ns, type, name));
+    }
 
-    const [current, max] = ns.bladeburner.getStamina();
+    const { name: boName } = ((await dodge({ ns, command: `ns.bladeburner.getNextBlackOp()` })) as {
+      name: BladeburnerBlackOpName;
+      rank: number;
+    } | null) ?? { name: '' };
+    if (boName !== '') tasks.push(await createTask(ns, 'Black Operations' as BladeburnerActionType, boName));
+
+    const [current, max] = (await dodge({ ns, command: `ns.bladeburner.getStamina()` })) as [number, number];
     const staminaPct = current / max;
     if (rested && staminaPct < 0.6) rested = false;
     else if (!rested && staminaPct > 0.95) rested = true;
 
-    if (!noSleeves) doSleeves(ns, tasks, rested);
-    if (!noPlayer) endTime = doPlayer(ns, tasks, rested, endTime);
+    hud.stamina.innerText = `${ns.formatNumber(Math.round(current), 3, 1000, true)} / ${ns.formatNumber(
+      Math.round(max),
+      3,
+      1000,
+      true,
+    )}`;
+
+    const rank = (await dodge({ ns, command: `ns.bladeburner.getRank()` })) as number;
+    hud.rank.innerText = `${ns.formatNumber(rank)}`;
+
+    if (!noSleeves) await doSleeves(ns, tasks, rested);
+    if (!noPlayer) {
+      ({ endTime, name } = await doPlayer(ns, tasks, rested, endTime));
+      if (name === 'Hyperbolic Regeneration Chamber' && rested) endTime = Date.now();
+    }
 
     await ns.bladeburner.nextUpdate();
   }

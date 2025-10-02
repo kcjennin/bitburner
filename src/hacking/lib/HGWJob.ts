@@ -29,8 +29,6 @@ export const JOB_RAM = {
   w2: 1.75,
 } as const;
 
-const DEBUG = false;
-
 export async function submitJob(
   ns: NS,
   host: string,
@@ -52,6 +50,7 @@ export async function submitJob(
   };
   const pid = ns.exec(JOB_SCRIPTS[type], host, { threads, temporary: true }, JSON.stringify(wi));
   if (pid === 0) {
+    ns.tprint(ns.getScriptLogs(pid));
     throw 'Failed to submit job.';
   }
 

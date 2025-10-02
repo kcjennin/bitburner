@@ -1,3 +1,4 @@
+import { dodge } from '@/lib/dodge';
 import { BladeburnerSkillName, NS } from '@ns';
 
 // smaller weight is better
@@ -11,19 +12,26 @@ export async function main(ns: NS): Promise<void> {
   while (true) {
     let didUpgrade = false;
     do {
-      const skills = SKILLS.map((s) => {
-        return {
+      const skills: { name: BladeburnerSkillName; cost: number; level: number }[] = [];
+      for (const s of SKILLS) {
+        const cost = (await dodge({ ns, command: `ns.bladeburner.getSkillUpgradeCost("${s.name}")` })) as number;
+        const level = (await dodge({
+          ns,
+          command: `ns.bladeburner.getSkillLevel("${s.name}") / ${s.weight}`,
+        })) as number;
+        skills.push({
           name: s.name,
-          cost: ns.bladeburner.getSkillUpgradeCost(s.name),
-          level: ns.bladeburner.getSkillLevel(s.name) / s.weight,
-        };
-      }).sort((a, b) => a.level - b.level);
+          cost,
+          level,
+        });
+      }
+      skills.sort((a, b) => a.level - b.level);
 
       // Overclock maxes out at 90
-      if (skills[0].name === 'Overclock' && ns.bladeburner.getSkillLevel('Overclock') >= 90) skills.shift();
+      if (skills[0].name === 'Overclock' && skills[0].level === 90) skills.shift();
 
       // Buy the skill, if possible
-      didUpgrade = ns.bladeburner.upgradeSkill(skills[0].name);
+      didUpgrade = (await dodge({ ns, command: `ns.bladeburner.upgradeSkill("${skills[0].name}")` })) as boolean;
     } while (didUpgrade);
     await ns.bladeburner.nextUpdate();
   }

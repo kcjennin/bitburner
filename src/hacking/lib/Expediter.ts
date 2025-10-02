@@ -1,4 +1,4 @@
-import { getCacheData, ServersCache } from '@/lib/Cache';
+import { getServers } from '@/lib/utils';
 import { NS } from '@ns';
 
 const HOME_RESERVED = 32;
@@ -17,7 +17,8 @@ export class Expediter {
     this.smallest = Infinity;
     this.total = 0;
     this.servers = new Map<string, Block>();
-    this.blocks = getCacheData(ns, ServersCache)
+    this.blocks = getServers(ns)
+      .map(ns.getServer)
       .filter((s) => s.hasAdminRights && (Expediter.USE_HACKNET || !s.hostname.startsWith('hacknet')))
       .map((s) => {
         const so = ns.getServer(s.hostname);
@@ -63,7 +64,8 @@ export class Expediter {
 
   update(): void {
     let updated = false;
-    getCacheData(this.ns, ServersCache)
+    getServers(this.ns)
+      .map(this.ns.getServer)
       .filter((s) => s.hasAdminRights && (Expediter.USE_HACKNET || !s.hostname.startsWith('hacknet')))
       .forEach((s) => {
         if (!this.servers.has(s.hostname)) {

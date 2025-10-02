@@ -22,7 +22,12 @@ export async function main(ns: NS): Promise<void> {
     ns.gang.recruitMember(Math.random().toString().slice(2, 4));
     const members = ns.gang.getMemberNames();
 
-    const focusMoney = !respectOnly && gi.respect > RESPECT_GOAL;
+    // focus money if:
+    //  - we're not only targeting respect
+    //  - we have enough respect
+    //    OR
+    //    we already own all the territory
+    const focusMoney = !respectOnly && (gi.respect > RESPECT_GOAL || gi.territory > 1 - 1e-7);
 
     // ascend
     members.forEach((m) => ascendMember(ns, m, members.length));
@@ -123,6 +128,11 @@ function chooseTask(ns: NS, member: string, focusMoney: boolean): string {
   const gi = ns.gang.getGangInformation();
   const mi = ns.gang.getMemberInformation(member);
 
+  // early on just train combat
+  if ([mi.str, mi.def, mi.agi, mi.dex].some((v) => v < 50)) {
+    return 'Train Combat';
+  }
+
   const taskInfos = [
     'Mug People',
     'Deal Drugs',
@@ -137,7 +147,9 @@ function chooseTask(ns: NS, member: string, focusMoney: boolean): string {
     const stats = ns.gang.getTaskStats(task);
     const money = ns.formulas.gang.moneyGain(gi, mi, stats);
     const respect = ns.formulas.gang.respectGain(gi, mi, stats);
-    return { task, stats, money, respect };
+    const wanted = ns.formulas.gang.wantedLevelGain(gi, mi, stats);
+
+    return { task, stats, money, respect, wanted };
   });
 
   // Terrorism and Human Trafficking are best, so either do them

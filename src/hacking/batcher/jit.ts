@@ -72,7 +72,7 @@ export async function main(ns: NS): Promise<void> {
     ns.print(`Scheduled: ${scheduler.size()}/${target.actualMaxBatches}`);
     ns.print(`Completed: ${Math.floor(scheduler.stopped / 4)}`);
     ns.print(`Greed:     ${ns.formatPercent(target.greed, 1)} ($${ns.formatNumber(target.batchMoney)})`);
-    ns.print(`Weaken:    ${ns.tFormat(target.times.weaken1)}`);
+    ns.print(`Weaken:    ${ns.tFormat(target.times.w1)}`);
     ns.print(`${new Date().toLocaleTimeString()}`);
   }
 }

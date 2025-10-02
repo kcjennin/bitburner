@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
-import { NetscriptPort, NS, Player, Server } from '@ns';
-import { ServerPool } from '../lib/ServerPool';
-import { collectJob, JOB_RAM, submitJob } from '../lib/HGWJob';
-import { isPrepped } from '../../lib/utils';
-import { prep } from '../lib/util';
-import { Expediter } from '../lib/Expediter';
-import { STOCK_MAP } from '../../data/stock-map';
-import { BitNodeMultiplersCache, getCacheData, ServersCache } from '@/lib/Cache';
+import { BitNodeMultipliers, NetscriptPort, NS, Player, Server } from '@ns';
+import { ServerPool } from '@/hacking/lib/ServerPool';
+import { collectJob, JOB_RAM, submitJob } from '@/hacking/lib/HGWJob';
+import { getServers, isPrepped } from '@/lib/utils';
+import { prep } from '@/hacking//lib/util';
+import { Expediter } from '@/hacking/lib/Expediter';
+import { STOCK_MAP } from '@/data/stock-map';
+import { dodge } from '@/lib/dodge';
 
 type STOCK_ORG = keyof typeof STOCK_MAP;
 
@@ -59,6 +59,7 @@ function calculateBatch(
   ns: NS,
   target: string,
   spacer: number,
+  hacknet: boolean,
   running = 0,
   fixedGreed?: number,
 ): BatchInfo | undefined {
@@ -74,7 +75,10 @@ function calculateBatch(
 
   let greed = fixedGreed ?? 0.99;
   const hackPercent = ns.formulas.hacking.hackPercent(so, po);
-  if (hackPercent === 0) return undefined;
+  if (hackPercent === 0) {
+    ns.print('No chance to hack.');
+    return undefined;
+  }
   const best: Omit<BatchInfo, 'target' | 'times'> = {
     rate: 0,
     depth: 0,
@@ -86,7 +90,7 @@ function calculateBatch(
     const { h, w1, g, w2 } = batchThreads(ns, greed, so, po);
 
     let batches = 0;
-    const pool = new ServerPool(ns);
+    const pool = new ServerPool(ns, hacknet);
     while (batches < maxBatches) {
       if (pool.reserve(h * JOB_RAM.h) === undefined) break;
       if (pool.reserve(w1 * JOB_RAM.w1) === undefined) break;
@@ -121,7 +125,10 @@ function calculateBatch(
     greed -= Math.max(0.01, hackPercent);
   }
 
-  if (best.rate === 0) return undefined;
+  if (best.rate === 0) {
+    ns.print('No rate found.');
+    return undefined;
+  }
   return {
     target,
     times,
@@ -129,11 +136,11 @@ function calculateBatch(
   };
 }
 
-function updatePlayerHacking(ns: NS, po: Player, exp: number) {
-  po.exp.hacking += Math.round(exp * getCacheData(ns, BitNodeMultiplersCache).HackExpGain);
+function updatePlayerHacking(ns: NS, bnMults: BitNodeMultipliers, po: Player, exp: number) {
+  po.exp.hacking += Math.round(exp * bnMults.HackExpGain);
 
   const newSkill = ns.formulas.skills.calculateSkill(po.exp.hacking, po.mults.hacking);
-  po.skills.hacking = Math.round(newSkill * getCacheData(ns, BitNodeMultiplersCache).HackingLevelMultiplier);
+  po.skills.hacking = Math.round(newSkill * bnMults.HackingLevelMultiplier);
 }
 
 export async function main(ns: NS): Promise<void> {
@@ -143,13 +150,15 @@ export async function main(ns: NS): Promise<void> {
     target: cliTarget,
     spacer,
     stock,
+    hacknet,
   } = ns.flags([
     ['debug', false],
     ['exclude', ''],
     ['target', ''],
     ['spacer', 5],
     ['stock', 0],
-  ]) as { debug: boolean; exclude: string; target: string; spacer: number; stock: number };
+    ['hacknet', false],
+  ]) as { debug: boolean; exclude: string; target: string; spacer: number; stock: number; hacknet: boolean };
   const excludes = exclude.split(',');
 
   ns.disableLog('ALL');
@@ -162,16 +171,22 @@ export async function main(ns: NS): Promise<void> {
   ns.ui.openTail();
 
   const stockPort: NetscriptPort | undefined = stock !== 0 ? ns.getPortHandle(stock) : undefined;
+  const bnMults = (await dodge({
+    ns,
+    cRun: (s: string) => ns.exec(s, 'home'),
+    command: 'ns.getBitNodeMultipliers()',
+  })) as BitNodeMultipliers;
 
   let targetInfo;
   if (cliTarget !== '') {
-    targetInfo = calculateBatch(ns, cliTarget, spacer);
+    targetInfo = calculateBatch(ns, cliTarget, spacer, hacknet);
     if (targetInfo === undefined) throw 'Invalid target.';
   } else {
     // get the batch information for all servers
     const filtered: BatchInfo[] = [];
     const po = ns.getPlayer();
-    const bestServers = getCacheData(ns, ServersCache)
+    const bestServers = getServers(ns)
+      .map(ns.getServer)
       .filter(
         (s) =>
           !excludes.includes(s.hostname) &&
@@ -184,7 +199,7 @@ export async function main(ns: NS): Promise<void> {
 
     for (const { so } of bestServers) {
       try {
-        const b = calculateBatch(ns, so.hostname, spacer);
+        const b = calculateBatch(ns, so.hostname, spacer, hacknet);
         if (b !== undefined) filtered.push(b);
       } catch (error) {
         ns.tprint(`Failed to calculate batch on server: ${so.hostname}`);
@@ -197,7 +212,7 @@ export async function main(ns: NS): Promise<void> {
     targetInfo = filtered.reduce((best, b) => (best.rate > b.rate ? best : b));
   }
   const { target, greed } = targetInfo;
-  let { rate, depth, times, threads } = targetInfo;
+  let { depth, times, threads } = targetInfo;
 
   if (!isPrepped(ns, target)) await prep(ns, new Expediter(ns), target);
 
@@ -210,7 +225,6 @@ export async function main(ns: NS): Promise<void> {
     const timer = setInterval(() => {
       ns.clearLog();
       ns.print(`Target: ${target}`);
-      ns.print(`Income: $${ns.formatNumber(rate * 1000)}/s`);
       ns.print(`Depth:  ${depth} / ${Math.floor(times.w1 / (spacer * 4))}`);
       ns.print(`        ${running} | ${completed} | ${ns.formatNumber(cycleTime, 3, 1000, true)} ms`);
       ns.print(`Stock:  ${stockManipulate}`);
@@ -221,9 +235,7 @@ export async function main(ns: NS): Promise<void> {
   const expGained: number[] = [];
   while (true) {
     const cycleStart = Date.now();
-
-    const pool = new ServerPool(ns);
-
+    const pool = new ServerPool(ns, hacknet);
     const po = ns.getPlayer();
     const so = ns.getServer(target);
     if (so.hackDifficulty !== so.minDifficulty || so.moneyAvailable !== so.moneyMax) {
@@ -240,9 +252,9 @@ export async function main(ns: NS): Promise<void> {
     }
 
     // recalculate times from current player level
-    const bi = calculateBatch(ns, target, spacer, running, greed);
+    const bi = calculateBatch(ns, target, spacer, hacknet, running, greed);
     if (bi !== undefined) {
-      ({ rate, depth, times } = bi);
+      ({ depth, times } = bi);
     } else {
       times = batchTimes(ns, so, po);
     }
@@ -250,6 +262,7 @@ export async function main(ns: NS): Promise<void> {
     // update hacking level based on flying batches
     updatePlayerHacking(
       ns,
+      bnMults,
       po,
       expGained.reduce((acc, x) => acc + x, 0),
     );
@@ -286,7 +299,7 @@ export async function main(ns: NS): Promise<void> {
 
       // factor in experience before recalculating the threads
       const batchExp = (threads.h + threads.w1 + threads.g + threads.w2) * ns.formulas.hacking.hackExp(so, po);
-      updatePlayerHacking(ns, po, batchExp);
+      updatePlayerHacking(ns, bnMults, po, batchExp);
       expGained.push(batchExp);
 
       // recalculate threads
